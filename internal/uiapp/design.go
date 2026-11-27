@@ -8,7 +8,8 @@ import "github.com/egoist/mygo/ui"
 //     red a destructive action.
 //   - The sea is made of glyphs alone (~ ≈ ≋), filled continuously on one flat background,
 //     and it stays where it belongs: the Focus Clock, and the tide ribbon on Today.
-//   - Every page opens with the same two-tone title at the same place.
+//   - Every page opens with its title at the same place. Today and the Focus Clock, the two
+//     pages the app is about, carry the two-tone title; the other pages use a plain one.
 //   - Cards share one radius and one shadow; there is one primary button.
 const (
 	PagePadTop  = 18 // space between the title bar and a page's first element
@@ -17,12 +18,18 @@ const (
 	CardRadius  = 16 // every card
 )
 
-// pageTitle renders a page's title the way Today does: heavy navy, with the last character in ocean blue.
+// pageTitle is the two-tone heading reserved for Today and the Focus Clock: heavy navy, with the
+// last character in ocean blue.
 func pageTitle(c *ui.Context, head, tail string, p Palette) ui.Element {
 	return ui.RichText(c,
 		ui.Span{Text: head, Weight: 800, Size: PageTitleFs, Color: p.Navy},
 		ui.Span{Text: tail, Weight: 800, Size: PageTitleFs, Color: p.Blue},
 	).LetterSpacing(-0.5)
+}
+
+// plainTitle is the heading of the supporting pages (Calendar, Stats, Settings): one colour, no accent.
+func plainTitle(c *ui.Context, text string, p Palette) ui.Element {
+	return ui.Text(c, text).FontSize(24).FontWeight(700).TextColor(p.Navy).SingleLine()
 }
 
 // cardLook applies the one card style (Today's header card) to el.

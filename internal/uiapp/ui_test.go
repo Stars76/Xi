@@ -59,7 +59,7 @@ func TestMainViewTodoAndPanels(t *testing.T) {
 	if err := tt.Click("统计"); err != nil {
 		t.Fatal(err)
 	}
-	if !tt.HasText("统计范围") && !tt.HasText("每日") {
+	if !tt.HasText("专注统计") {
 		t.Fatal("expected stats panel")
 	}
 	if err := tt.Click("每日"); err != nil {

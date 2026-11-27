@@ -148,7 +148,7 @@ func (a *App) renderStatsPanel(c *ui.Context, p Palette) {
 		ui.Column(c).FillWidth().MaxWidth(980).Grow(1).MinHeight(0).Padding(PagePadTop, PagePadX, 18, PagePadX).Gap(14).Children(func() {
 			// Page header: same title treatment as Today
 			ui.Row(c).FillWidth().Height(40).AlignItems(ui.Center).Gap(10).Children(func() {
-				pageTitle(c, "统", "计", p)
+				plainTitle(c, "专注统计", p)
 				if rangeSum != nil {
 					ui.Textf(c, "%s 至 %s", rangeSum.Since, rangeSum.Until).
 						FontSize(12.5).FontFeatures("tnum").TextColor(p.Ink4).Padding(6, 0, 0, 2)

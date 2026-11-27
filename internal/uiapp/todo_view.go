@@ -907,7 +907,7 @@ func (a *App) renderCalendarOverlay(c *ui.Context, p Palette) {
 	ui.Column(c).Fill().AlignItems(ui.Center).Background(p.Paper).Children(func() {
 	ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(PagePadTop, PagePadX, 18, PagePadX).Gap(14).Children(func() {
 		ui.Row(c).FillWidth().Height(40).AlignItems(ui.Center).Gap(10).Children(func() {
-			pageTitle(c, "日", "历", p)
+			plainTitle(c, "日历", p)
 			ui.Text(c, "点选某一天，查看或安排那天的事").FontSize(12.5).TextColor(p.Ink4).Padding(6, 0, 0, 2)
 		})
 		cardLook(ui.Column(c.Key("cal-card")).FillWidth(), p).
