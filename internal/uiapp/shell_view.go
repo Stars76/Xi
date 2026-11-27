@@ -76,7 +76,7 @@ func badgeChip(c *ui.Context, text string, bg, fg, border ui.Color) ui.Element {
 	return el
 }
 
-// MainView renders the unified 526Hz studio shell:
+// MainView renders the unified studio shell:
 // Ocean-Tide Sidebar (196px, or a 56px icon rail) + Center Workspace (Today / Focus Clock / Calendar / Stats / Settings) + Optional Right Timeline Drawer.
 func (a *App) MainView(c *ui.Context) {
 	th, p := a.paletteOf(c)
@@ -161,10 +161,7 @@ func (a *App) MainView(c *ui.Context) {
 				if logo := logoSource(); logo != nil {
 					ui.Image(c, logo).Size(20, 20).Radius(5)
 				}
-				ui.RichText(c,
-					ui.Span{Text: "526", Weight: 800, Size: 16, Color: p.Navy},
-					ui.Span{Text: "Hz", Weight: 800, Size: 16, Color: p.Blue},
-				).Font(FontNum).LetterSpacing(-0.2)
+				ui.Text(c, "汐").FontSize(18).FontWeight(800).TextColor(p.Navy).SingleLine()
 			})
 
 			ui.Spacer(c)
@@ -339,7 +336,7 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette, rail 
 		return
 	}
 
-	// Clean minimalist studio sidebar matching the quiet 526Hz paper-and-ocean aesthetic
+	// Clean minimalist studio sidebar matching the quiet paper-and-ocean aesthetic
 	ui.Column(c).Width(sidebarWidth).FillHeight().Background(p.Surface).
 		BorderWidth(0, 1, 0, 0).BorderColor(p.Line).
 		Padding(14, 10, 12, 10).Gap(5).Children(func() {

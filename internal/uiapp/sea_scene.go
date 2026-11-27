@@ -12,7 +12,7 @@ import (
 const (
 	EncounterAngler     = "angler"     // 垂钓小船
 	EncounterPirate     = "pirate"     // 幽灵海盗船
-	EncounterWhale      = "whale"      // 526Hz 深海蓝鲸
+	EncounterWhale      = "whale"      // 深海蓝鲸
 	EncounterDolphin    = "dolphin"    // 跃浪海豚群
 	EncounterLighthouse = "lighthouse" // 深夜灯塔与流星
 	EncounterAurora     = "aurora"     // 海面字符极光
@@ -29,7 +29,7 @@ type EncounterMeta struct {
 var AllEncounters = []EncounterMeta{
 	{Kind: EncounterAngler, Name: "垂钓小船", Preview: `  o _/  \___/  <°)))><`, Hint: "全天候"},
 	{Kind: EncounterPirate, Name: "海盗船", Preview: `|>[x] /__||__\ \_____/`, Hint: "全天候"},
-	{Kind: EncounterWhale, Name: "526Hz 蓝鲸", Preview: `\|/  .-' o '-.  |\__/`, Hint: "专注中"},
+	{Kind: EncounterWhale, Name: "蓝鲸", Preview: `\|/  .-' o '-.  |\__/`, Hint: "专注中"},
 	{Kind: EncounterDolphin, Name: "海豚", Preview: `  _.-._  / \  ~o~`, Hint: "高专注"},
 	{Kind: EncounterLighthouse, Name: "灯塔", Preview: ` \*/ [|]  /  ✦`, Hint: "深夜"},
 	{Kind: EncounterAurora, Name: "极光", Preview: `░▒~∿▒░ ~∿░▒~`, Hint: "连胜"},
@@ -601,7 +601,7 @@ func (s *SeaState) drawSceneEncounters(p *ui.Painter, r ui.Rect, v SeaView, wl f
 		px = 13
 	}
 
-	// Curated multi-tone palette strictly aligned with 526Hz Paper White x Ocean Blue / Deep Sea Night x Ice Blue
+	// Curated multi-tone palette strictly aligned with the Paper White x Ocean Blue / Deep Sea Night x Ice Blue
 	hullCol := ui.Hex("#08335E")
 	hullMid := ui.Hex("#165B9E")
 	sailCol := ui.Hex("#2F8DF2")
@@ -933,8 +933,8 @@ func (s *SeaState) drawSceneEncounters(p *ui.Painter, r ui.Rect, v SeaView, wl f
 		}
 
 	case EncounterWhale:
-		// Iconic 526Hz Blue Whale: sculpted two-tone giant breaching smoothly, riding the swell,
-		// emitting luminous 526Hz concentric acoustic rings & physics mist fountain, then lifting its fluke into a dive!
+		// Iconic Blue Whale: sculpted two-tone giant breaching smoothly, riding the swell,
+		// emitting luminous concentric acoustic rings & physics mist fountain, then lifting its fluke into a dive!
 		xNorm := 0.12 + prog*0.76
 		if act.dir < 0 {
 			xNorm = 0.88 - prog*0.76
@@ -968,7 +968,7 @@ func (s *SeaState) drawSceneEncounters(p *ui.Painter, r ui.Rect, v SeaView, wl f
 			drawWaterWake(xNorm, adv*15.5, whaleBack, emerge*edgeAlpha)
 			drawGlow(cx, whaleBaseY-lineH*2.2, adv*14.0, whaleHigh, 0.16*emerge*edgeAlpha)
 
-			// 526Hz concentric acoustic rings expanding gently during song/click!
+			// Concentric acoustic rings expanding gently during song/click!
 			if (prog >= 0.22 && prog <= 0.66) || reacting {
 				ringCycle := math.Mod(tt*0.55, 1.0)
 				if reacting {

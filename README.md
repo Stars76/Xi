@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="resources/icon.png" alt="526Hz" width="84" />
+<img src="resources/icon.png" alt="汐" width="84" />
 
-# 526Hz
+# 汐 · Xi
 
 **一款纯 Go 原生 GPU 渲染的极简海洋桌面专注与待办应用**
 
@@ -18,9 +18,9 @@
 
 ## 界面一览
 
-| 今日事（纸白 × 海蓝） | 专注钟 · 526Hz 蓝鲸 |
+| 今日事（纸白 × 海蓝） | 专注钟 · 蓝鲸 |
 | :---: | :---: |
-| ![今日事](docs/screenshots/today-light.png) | ![专注钟 526Hz 蓝鲸](docs/screenshots/focus-whale-light.png) |
+| ![今日事](docs/screenshots/today-light.png) | ![专注钟 蓝鲸](docs/screenshots/focus-whale-light.png) |
 
 | 深海夜蓝 · 弦月与灯塔 | 年度统计 · 52 周专注热力图 |
 | :---: | :---: |
@@ -32,13 +32,13 @@
 
 - **极简原生架构**：基于 Go + [`github.com/egoist/mygo`](https://github.com/egoist/mygo)（Direct2D / D3D11 原生 GPU 渲染），不打包浏览器内核，冷启动迅捷、常驻轻量。
 - **今日事待办工作台**：
-  - 顶部精干纯纸面抬头 + 底部 32px 526Hz 潮汐声波细带（待机静水微息、专注轻涌、完成任务泛起海蓝微澜）。
+  - 顶部精干纯纸面抬头 + 底部 32px 潮水带（待机静水微息、专注轻涌、完成任务泛起海蓝微澜）。
   - 支持子任务拆解、拖拽排序、智能闹钟解析（输入 `16:30 团队同步` 自动设闹钟）、未完自动顺延、每日固定任务模板，以及底部可折叠「已完成」分组。
 - **沉浸式专注钟 & 60fps 动态海面生态**：
   - 支持多轮番茄计划、自定义时长、置顶画中画小窗（与主窗 1:1 共享同一片海）及 `264×50` 悬浮灵动条（带底边 `2.5px` 海蓝进度线）。
   - **天色光线**：随本地时间在晨光、晴昼、暮色、星夜间自动过渡，搭配体积云、矢量振翅海鸟、发光弦月与海面月影。
   - **5 种天气 & 实况同步**：晴空、细雨（浪面真实雨花）、飞雪、雷雨（分叉矢量闪电）、薄雾（视差海雾），并支持可选的 Open-Meteo 实时天气同步。
-  - **6 种可互动海洋彩蛋**：垂钓小船、海盗船、526Hz 蓝鲸、海豚群、灯塔、极光——全部采用真实 Gerstner 波浪起伏与刚体船身俯仰倾斜，点击触发微声光互动并记入图鉴。
+  - **6 种可互动海洋彩蛋**：垂钓小船、海盗船、蓝鲸、海豚群、灯塔、极光——全部采用真实 Gerstner 波浪起伏与刚体船身俯仰倾斜，点击触发微声光互动并记入图鉴。
 - **立体声程序化天气环境音**：纯 Go 实时合成海浪、细雨、雷雨与微风 4 套立体声环境白噪音，专注计时自动淡入、暂停自动淡出，无需任何外部音频文件。
 - **日历、统计与 Markdown 复盘**：
   - 日历视图直接展示每日专注分钟数与任务完成状态。
@@ -54,22 +54,22 @@
 
 ### 直接下载
 
-前往 [Releases](https://github.com/Stars76/526Hz/releases) 下载最新 `526Hz.exe`，双击即可运行，无需安装额外运行时。
+前往 [Releases](https://github.com/Stars76/526Hz/releases) 下载 `Xi.exe`，双击即可运行，无需安装额外运行时。带版本号的是正式版；名为"预览版"的是随每次提交自动构建的最新版，可能不稳定。
 
 ### 启动参数
 
 ```powershell
 # 默认：打开主窗口并常驻系统托盘
-.\526Hz.exe
+.\Xi.exe
 
 # 静默启动到系统托盘（开机自启默认使用）
-.\526Hz.exe --start-hidden
+.\Xi.exe --start-hidden
 
 # 直接打开置顶专注钟画中画小窗
-.\526Hz.exe --compact-timer
+.\Xi.exe --compact-timer
 
 # 指定独立数据目录运行（用于测试或多配置隔离）
-.\526Hz.exe --user-data .\my-data
+.\Xi.exe --user-data .\my-data
 ```
 
 ---
@@ -86,7 +86,7 @@ go tool mygo vet
 # 2. 运行全部单元测试
 go test -tags mygo_nowebview -count=1 ./...
 
-# 3. 编译纯原生单文件（产物位于 release\windows-amd64\526Hz.exe）
+# 3. 编译纯原生单文件（产物位于 release\windows-amd64\ 下）
 $env:GOFLAGS = "-tags=mygo_nowebview -buildvcs=false"
 go tool mygo build -skip-installer
 ```
@@ -98,7 +98,7 @@ go tool mygo build -skip-installer
 ```text
 526Hz/
 ├── main.go                     # 单实例锁、CLI 参数、数据目录兼容与启动编排
-├── mygo.json                   # MyGo 应用元数据（526Hz / 3.0.0）
+├── mygo.json                   # MyGo 应用元数据（汐 / Xi）
 ├── resources/icon.png          # 应用图标
 ├── docs/screenshots/           # README 实景展示图
 └── internal/

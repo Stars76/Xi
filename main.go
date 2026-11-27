@@ -31,6 +31,13 @@ func parseArgs(args []string) (compact bool, startHidden bool, userDataDir strin
 	return compact, startHidden, userDataDir
 }
 
+// appDirName is the app's ASCII name: its data directory and executable are called this.
+// The name people see is 汐.
+const appDirName = "Xi"
+
+// legacyAppDirNames are the data directories of the app's earlier names, newest first.
+var legacyAppDirNames = []string{"526Hz", "Sisyphus"}
+
 func resolveUserDataDir(overrideData, configDir, defaultAppDir string) string {
 	if overrideData != "" {
 		if abs, err := filepath.Abs(overrideData); err == nil {
@@ -39,16 +46,18 @@ func resolveUserDataDir(overrideData, configDir, defaultAppDir string) string {
 		return overrideData
 	}
 	if defaultAppDir == "" && configDir != "" {
-		defaultAppDir = filepath.Join(configDir, "526Hz")
+		defaultAppDir = filepath.Join(configDir, appDirName)
 	}
-	// Preserve existing user data under legacy %APPDATA%\Sisyphus unless a 526Hz store already exists.
+	// The app has been renamed twice (Sisyphus, then 526Hz, now 汐 / Xi). Unless a store already
+	// exists under the current name, keep using the newest earlier directory that has one, so
+	// nobody's data is left behind by a rename.
 	if configDir != "" && defaultAppDir != "" {
-		newStore := filepath.Join(defaultAppDir, "sisy-store.json")
-		legacyDir := filepath.Join(configDir, "Sisyphus")
-		legacyStore := filepath.Join(legacyDir, "sisy-store.json")
-		if _, err := os.Stat(newStore); os.IsNotExist(err) {
-			if _, err := os.Stat(legacyStore); err == nil {
-				return legacyDir
+		if _, err := os.Stat(filepath.Join(defaultAppDir, "sisy-store.json")); os.IsNotExist(err) {
+			for _, name := range legacyAppDirNames {
+				legacyDir := filepath.Join(configDir, name)
+				if _, err := os.Stat(filepath.Join(legacyDir, "sisy-store.json")); err == nil {
+					return legacyDir
+				}
 			}
 		}
 	}
@@ -58,7 +67,7 @@ func resolveUserDataDir(overrideData, configDir, defaultAppDir string) string {
 func main() {
 	compactOnly, startHidden, overrideData := parseArgs(os.Args[1:])
 
-	mygo.App.SetName("526Hz")
+	mygo.App.SetName(appDirName)
 	mygo.App.SetVersion(uiapp.AppVersion)
 
 	cfgDir, _ := os.UserConfigDir()

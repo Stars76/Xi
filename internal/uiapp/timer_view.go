@@ -227,7 +227,7 @@ func (a *App) renderTimerMiniPill(c *ui.Context, snap timer.Snapshot, p Palette)
 		rem := float64(t.LeftMs) / float64(int64(t.TotalSec)*1000)
 		elapsedRatio = math.Max(0, math.Min(1, 1.0-rem))
 	}
-	pillTip := "526Hz 灵动条"
+	pillTip := "汐 灵动条"
 	if t.Task != nil && t.Task.Title != "" {
 		pillTip = fmt.Sprintf("%s · %s", t.PhaseLabel, t.Task.Title)
 	}

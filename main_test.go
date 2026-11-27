@@ -8,9 +8,9 @@ import (
 
 func TestResolveUserDataDir(t *testing.T) {
 	cfg := t.TempDir()
-	defaultDir := filepath.Join(cfg, "526Hz")
+	defaultDir := filepath.Join(cfg, "Xi")
 
-	// Fresh install: uses 526Hz directory.
+	// Fresh install: uses the Xi directory.
 	if got := resolveUserDataDir("", cfg, defaultDir); got != defaultDir {
 		t.Fatalf("fresh install got %q, want %q", got, defaultDir)
 	}
@@ -33,7 +33,19 @@ func TestResolveUserDataDir(t *testing.T) {
 		t.Fatalf("legacy fallback got %q, want %q", got, legacyDir)
 	}
 
-	// Once a new 526Hz store exists, prefers 526Hz dir.
+	// A store under the previous name (526Hz) is newer than Sisyphus and wins over it.
+	prevDir := filepath.Join(cfg, "526Hz")
+	if err := os.MkdirAll(prevDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(prevDir, "sisy-store.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveUserDataDir("", cfg, defaultDir); got != prevDir {
+		t.Fatalf("526Hz fallback got %q, want %q", got, prevDir)
+	}
+
+	// Once a store exists under the current name, that directory is used.
 	if err := os.MkdirAll(defaultDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

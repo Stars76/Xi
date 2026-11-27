@@ -2,7 +2,7 @@ package uiapp
 
 import "github.com/egoist/mygo/ui"
 
-// 526Hz design rules. Today is the reference page; every other page follows what it does.
+// 汐 (Xi) design rules. Today is the reference page; every other page follows what it does.
 //
 //   - Colour: paper white with one ocean-blue ramp. Amber marks an interrupted round,
 //     red a destructive action.

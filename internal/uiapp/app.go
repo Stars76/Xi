@@ -553,7 +553,7 @@ func (a *App) updateKeepRunning(running bool) {
 		return
 	}
 	if running && a.keepRunRel == nil {
-		a.keepRunRel = mygo.Power.KeepRunning("526Hz 专注计时中")
+		a.keepRunRel = mygo.Power.KeepRunning("汐 专注计时中")
 	} else if !running && a.keepRunRel != nil {
 		rel := a.keepRunRel
 		a.keepRunRel = nil
@@ -730,7 +730,7 @@ func (a *App) onTimerEvent(ev timer.Event) {
 					a.Sound.Play("break")
 				}
 			}
-			// Reward completed focus rounds with a celebratory 526Hz whale (or another ocean easter egg).
+			// Reward completed focus rounds with a celebratory blue whale (or another ocean easter egg).
 			if ev.Phase == "focus" && a.seaSceneSnapshot().EncountersOn {
 				kind := a.stageSea.TriggerEncounter(EncounterWhale, a.now(), true)
 				a.recordNaturalEncounter(kind)
@@ -829,7 +829,7 @@ func (a *App) OpenMainWindow() {
 	}
 
 	opts := mygo.WindowOptions{
-		Title:           "526Hz",
+		Title:           "汐",
 		Width:           1060,
 		Height:          780,
 		MinWidth:        720,
@@ -860,7 +860,7 @@ func (a *App) OpenMainWindow() {
 				if runtime.GOOS == "darwin" {
 					body = "专注钟继续计时。点菜单栏图标可回到主窗，右键可开始/暂停或退出。"
 				}
-				a.SendNotification("526Hz 仍在后台运行", body)
+				a.SendNotification("汐 仍在后台运行", body)
 			}
 			a.Log.Info("主窗已隐藏到托盘")
 		}
@@ -1120,7 +1120,7 @@ func (a *App) LaunchImportPicker(c *ui.Context) {
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Parent:  parent,
-			Title:   "选择 526Hz 备份文件",
+			Title:   "选择 汐 的备份文件",
 			Filters: []mygo.FileFilter{{Name: "JSON 备份", Extensions: []string{"json"}}},
 		})
 		if err != nil || len(paths) == 0 {
@@ -1158,10 +1158,10 @@ func (a *App) LaunchExportDialog() {
 			return
 		}
 		docsDir, _ := mygo.App.Path(mygo.PathDocuments)
-		defPath := filepath.Join(docsDir, fmt.Sprintf("526Hz-backup-%s.json", a.now().Format("2006-01-02")))
+		defPath := filepath.Join(docsDir, fmt.Sprintf("Xi-backup-%s.json", a.now().Format("2006-01-02")))
 		dest, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
 			Parent:      parent,
-			Title:       "导出 526Hz 备份",
+			Title:       "导出 汐 的备份",
 			DefaultPath: defPath,
 			Filters:     []mygo.FileFilter{{Name: "JSON 文件", Extensions: []string{"json"}}},
 		})

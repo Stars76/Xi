@@ -317,8 +317,8 @@ func TestUnifiedFocusStageAndSubtaskSync(t *testing.T) {
 	a.Timer.StartTask(tk.ID, a.Todo.TodayKey(), false)
 
 	tt := ui.NewTester(a.MainView, 1120, 780)
-	if !tt.HasText("今日专注") || !tt.HasText("526") {
-		t.Fatalf("expected 526Hz brand and sidebar focus card, got %v", tt.Texts())
+	if !tt.HasText("今日专注") || !tt.HasText("汐") {
+		t.Fatalf("expected 汐 brand and sidebar focus card, got %v", tt.Texts())
 	}
 
 	// Enter unified Focus Clock inside main window
@@ -444,7 +444,7 @@ func TestSeaScenePresetsEncountersAndYearlyHeatmap(t *testing.T) {
 	if err := tt.Click("海域场景"); err != nil {
 		t.Fatal(err)
 	}
-	if !tt.HasText("场景预设") || !tt.HasText("环境音") || !tt.HasText("526Hz 蓝鲸") || !tt.HasText("海豚") || !tt.HasText("极光") {
+	if !tt.HasText("场景预设") || !tt.HasText("环境音") || !tt.HasText("蓝鲸") || !tt.HasText("海豚") || !tt.HasText("极光") {
 		t.Fatalf("expected presets, ambient noise, and 6-card atlas visible, got %v", tt.Texts())
 	}
 

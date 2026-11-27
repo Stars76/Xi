@@ -159,7 +159,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 	ui.Column(c).Fill().AlignItems(ui.Center).Background(p.Paper).Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(18, 30, 0, 30).Children(func() {
 			if isToday {
-				// 526Hz EDITORIAL TIDE-RIBBON CARD:
+				// EDITORIAL TIDE-RIBBON CARD:
 				// Upper paper deck = pure razor-sharp typography, countdown & controls (zero glyphs behind text).
 				// Bottom 32px edge = the tide ribbon, a miniature of the Focus Clock sea (~ ≈ ≋).
 				t := snap.Timer

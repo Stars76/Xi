@@ -43,11 +43,11 @@ func (tc *TrayController) Create() {
 		iconBytes = assets.TrayTemplatePNG
 	}
 	tr, err := mygo.NewTray(mygo.TrayOptions{
-		ID:              "526hz-tray",
+		ID:              "xi-tray",
 		Icon:            iconBytes,
 		IconIsTemplate:  isMac,
 		MonospacedTitle: isMac,
-		ToolTip:         "526Hz",
+		ToolTip:         "汐",
 	})
 	if err != nil {
 		tc.mu.Unlock()
@@ -121,7 +121,7 @@ func (tc *TrayController) Refresh(snap timer.Snapshot) {
 	tc.mu.Unlock()
 
 	if titleChanged {
-		tr.SetToolTip("526Hz · " + ttl)
+		tr.SetToolTip("汐 · " + ttl)
 		if runtime.GOOS == "darwin" {
 			t := snap.Timer
 			if t.Running || t.Paused {
@@ -229,7 +229,7 @@ func (tc *TrayController) buildMenu(snap timer.Snapshot) *mygo.Menu {
 		},
 		mygo.Separator(),
 		{
-			Label: "退出 526Hz",
+			Label: "退出 汐",
 			Click: func(*mygo.MenuItem, *mygo.Window) {
 				tc.app.quitting = true
 				mygo.App.Quit()

@@ -246,7 +246,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 
 				rec := a.recoveryInfo()
 				ui.Column(c).FillWidth().Padding(12, 14).Radius(10).Background(p.Surface).Border(1, p.LineSoft).Gap(4).Children(func() {
-					ui.Textf(c, "版本：526Hz v%s", AppVersion).Font(FontMono).FontSize(12).TextColor(p.Ink2)
+					ui.Textf(c, "版本：汐 v%s", AppVersion).Font(FontMono).FontSize(12).TextColor(p.Ink2)
 					ui.Textf(c, "数据文件：%s", a.Store.File()).Font(FontMono).FontSize(11).TextColor(p.Ink3)
 					ui.Textf(c, "备份目录：%s（滚动备份 %d 份 / 损坏保留 %d 份）", a.Store.BackupDir(), len(rec.Backups), len(rec.Corrupt)).Font(FontMono).FontSize(11).TextColor(p.Ink3)
 					ui.Textf(c, "日志文件：%s", a.Log.Path()).Font(FontMono).FontSize(11).TextColor(p.Ink3)
