@@ -164,15 +164,23 @@ type seaFrame struct {
 	mood     seaMood
 	swellU   float64
 	swellAmt float64
+	bumpU    float64 // an encounter standing in the water lifts it here, and
+	bumpAmt  float64 // this strongly
+	rowH     float64 // height of one row of sea glyphs, as a fraction of the height
 }
 
 // lift is how much the passing swell raises the wave height at xNorm.
 func (f seaFrame) lift(xNorm float64) float64 {
-	if f.swellAmt <= 0 {
-		return 0
+	lift := 0.0
+	if f.swellAmt > 0 {
+		du := (xNorm - f.swellU) / 0.24
+		lift += 0.086 * f.swellAmt * math.Exp(-du*du)
 	}
-	du := (xNorm - f.swellU) / 0.24
-	return 0.086 * f.swellAmt * math.Exp(-du*du)
+	if f.bumpAmt > 0 {
+		du := (xNorm - f.bumpU) / 0.10
+		lift += 0.050 * f.bumpAmt * math.Exp(-du*du)
+	}
+	return lift
 }
 
 // height is the sea's wave-height field: glyphs are drawn wherever it reaches seaSurfaceH.
@@ -191,9 +199,10 @@ func (f seaFrame) surfaceVV(xNorm float64) float64 {
 	return vv
 }
 
-// surfaceY is the waterline in pixels at xNorm inside r.
+// surfaceY is the waterline in pixels at xNorm inside r: the middle of the topmost row of glyphs.
+// (The height field crosses seaSurfaceH a little above that row, which is drawn on a grid.)
 func (f seaFrame) surfaceY(r ui.Rect, xNorm float64) float32 {
-	return r.Y + float32(f.surfaceVV(xNorm))*r.H
+	return r.Y + float32(f.surfaceVV(xNorm)+f.rowH*0.5)*r.H
 }
 
 // surfaceSlope is the waterline's slope (dy/dx in pixels) at xNorm, for tilting things that float.
@@ -309,7 +318,8 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 		mood := s.moodCur
 		swellU, swellAmt := seaSwellAt(v.Weather, s.moodClock)
 		levelShown := s.levelShown
-		s.frame = seaFrame{wl: 1.0 - levelShown, tt: tt, mood: mood, swellU: swellU, swellAmt: swellAmt}
+		s.frame = seaFrame{wl: 1.0 - levelShown, tt: tt, mood: mood, swellU: swellU, swellAmt: swellAmt,
+			bumpU: s.scene.bumpU, bumpAmt: s.scene.bumpAmt}
 		frame := s.frame
 
 		compact := w < 460 || h < 480
@@ -323,6 +333,7 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 		cell := int(math.Max(9, math.Min(maxCell, math.Round(ideal))))
 		cols := max(1, int(math.Ceil(w/float64(cell))))
 		rows := max(1, int(math.Ceil(h/float64(cell))))
+		s.frame.rowH = float64(cell) / h
 		s.ensureGlyphs(cell)
 		glyphs := s.glyphs
 		ascents := s.ascents

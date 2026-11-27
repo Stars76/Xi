@@ -26,13 +26,15 @@ type EncounterMeta struct {
 	Hint     string
 }
 
+// AllEncounters lists the six encounters. Hint states where each one really belongs (see
+// encounterHabitat); the atlas shows it, so collecting them means knowing when to look.
 var AllEncounters = []EncounterMeta{
-	{Kind: EncounterAngler, Name: "垂钓小船", Preview: `  o _/  \___/  <°)))><`, Hint: "全天候"},
-	{Kind: EncounterPirate, Name: "海盗船", Preview: `|>[x] /__||__\ \_____/`, Hint: "全天候"},
-	{Kind: EncounterWhale, Name: "蓝鲸", Preview: `\|/  .-' o '-.  |\__/`, Hint: "专注中"},
-	{Kind: EncounterDolphin, Name: "海豚", Preview: `  _.-._  / \  ~o~`, Hint: "高专注"},
-	{Kind: EncounterLighthouse, Name: "灯塔", Preview: ` \*/ [|]  /  ✦`, Hint: "深夜"},
-	{Kind: EncounterAurora, Name: "极光", Preview: `░▒~∿▒░ ~∿░▒~`, Hint: "连胜"},
+	{Kind: EncounterAngler, Name: "垂钓小船", Preview: `  o  , /|\/ \___/`, Hint: "晴或雾的白天"},
+	{Kind: EncounterPirate, Name: "海盗船", Preview: ` |~ /|\ \____/`, Hint: "雷雨中，或入夜后"},
+	{Kind: EncounterWhale, Name: "蓝鲸", Preview: `.-""-. \|/ `+"`-.__.-'", Hint: "完成一轮专注"},
+	{Kind: EncounterDolphin, Name: "海豚", Preview: ` _.-._ ,-' o `+"`>", Hint: "晴天专注时"},
+	{Kind: EncounterLighthouse, Name: "灯塔", Preview: `/^\ [*]= = - -`, Hint: "夜里，或雾与雷雨中"},
+	{Kind: EncounterAurora, Name: "极光", Preview: `' | | : ' | :`, Hint: "晴夜 · 当日专注满 50 分钟"},
 }
 
 // DayPeriod classifies local time into 4 restrained atmospheric periods.
@@ -73,6 +75,8 @@ type sceneRuntime struct {
 	glyphAscent  float32
 	glyphAdvance float32
 	bigMap       map[bigKey]bigGlyph
+	bumpU        float64 // where an encounter is lifting the water (0..1), and
+	bumpAmt      float64 // how strongly (0..1); written while drawing encounters, read by the next frame's sea
 }
 
 type bigKey struct {
@@ -178,52 +182,72 @@ func encounterDuration(kind string) time.Duration {
 	}
 }
 
+// encounterHabitat reports how likely kind is to turn up in the conditions of v at now; 0 means it
+// does not belong here at all. This is what makes an encounter a consequence of the weather, the
+// hour and the day's work rather than a roll of the dice.
+func encounterHabitat(kind string, v SeaView, now time.Time) float64 {
+	period, _ := DayPeriod(now)
+	weather := seaWeatherKey(v.Weather)
+	night := period == "night"
+	clear := weather == "clear"
+	switch kind {
+	case EncounterAngler: // still water by day: clear or misty, never at night
+		if !night && (clear || weather == "fog") {
+			return 30
+		}
+	case EncounterPirate: // rides out storms, and sails after dark
+		if weather == "storm" {
+			return 34
+		}
+		if (period == "dusk" || night) && (clear || weather == "rain") {
+			return 16
+		}
+	case EncounterLighthouse: // lit when it is needed: at night, in fog, in a storm
+		if weather == "fog" || weather == "storm" {
+			return 30
+		}
+		if night {
+			return 24
+		}
+	case EncounterAurora: // a clear night, after a solid day's focus
+		if night && clear && v.TodayMinutes >= auroraFocusMinutes {
+			return 26
+		}
+	case EncounterDolphin: // fair weather, while you are at work
+		if clear && !night && (v.Running || v.TodayRounds >= 2) {
+			return 20
+		}
+	case EncounterWhale: // mostly comes when a round is finished (see onTimerEvent); rarely by chance
+		if clear || weather == "rain" {
+			return 5
+		}
+	}
+	return 0
+}
+
+// auroraFocusMinutes is how much focus the day needs before the aurora will show at night.
+const auroraFocusMinutes = 50
+
+// pickWeightedEncounter chooses among the encounters that belong in the current conditions.
+// It returns "" when none does, which simply leaves the sea to itself for a while.
 func pickWeightedEncounter(sr *sceneRuntime, v SeaView, now time.Time) string {
-	h := now.Local().Hour()
-	lateNight := h >= 22 || h < 5
-	highFocus := v.TodayMinutes >= 90 || v.TodayRounds >= 3
-
-	wAngler := 26.0
-	wPirate := 20.0
-	wWhale := 24.0
-	wDolphin := 12.0
-	wLighthouse := 8.0
-	wAurora := 8.0
-
-	if v.Running {
-		wWhale += 10
-		wDolphin += 8
+	total := 0.0
+	weights := make([]float64, len(AllEncounters))
+	for k, e := range AllEncounters {
+		weights[k] = encounterHabitat(e.Kind, v, now)
+		total += weights[k]
 	}
-	if lateNight {
-		wLighthouse += 36
-		wAurora += 14
+	if total <= 0 {
+		return ""
 	}
-	if highFocus {
-		wAurora += 20
-		wDolphin += 14
-		wWhale += 8
+	roll := sr.nextRand() * total
+	for k, e := range AllEncounters {
+		if roll < weights[k] {
+			return e.Kind
+		}
+		roll -= weights[k]
 	}
-	if v.Weather == "storm" {
-		wPirate += 14
-		wLighthouse += 10
-	}
-
-	total := wAngler + wPirate + wWhale + wDolphin + wLighthouse + wAurora
-	r := sr.nextRand() * total
-	switch {
-	case r < wAngler:
-		return EncounterAngler
-	case r < wAngler+wPirate:
-		return EncounterPirate
-	case r < wAngler+wPirate+wWhale:
-		return EncounterWhale
-	case r < wAngler+wPirate+wWhale+wDolphin:
-		return EncounterDolphin
-	case r < wAngler+wPirate+wWhale+wDolphin+wLighthouse:
-		return EncounterLighthouse
-	default:
-		return EncounterAurora
-	}
+	return AllEncounters[len(AllEncounters)-1].Kind
 }
 
 // TriggerEncounter immediately spawns a specific (or random if empty) ocean easter egg.
@@ -389,13 +413,13 @@ func sceneLight(v SeaView, now time.Time) seaLight {
 	}
 	switch period {
 	case "dawn":
-		l.u, l.low, l.col, l.strength = 0.77, true, warm, 0.85
+		l.u, l.low, l.col, l.strength = 0.70, true, warm, 0.85
 	case "dusk":
-		l.u, l.low, l.col, l.strength = 0.23, true, warm, 0.80
+		l.u, l.low, l.col, l.strength = 0.30, true, warm, 0.80
 	case "night":
-		l.u, l.col, l.strength = 0.81, moon, 0.90
+		l.u, l.col, l.strength = 0.36, moon, 0.90
 	default:
-		l.u, l.col, l.strength = 0.80, noon, 0.45
+		l.u, l.col, l.strength = 0.36, noon, 0.45
 	}
 	return l
 }
@@ -410,7 +434,7 @@ func (s *SeaState) drawSceneBackdrop(p *ui.Painter, r ui.Rect, v SeaView, wl flo
 	}
 	horizon := s.frame.surfaceY(r, 0.5)
 	skyH := horizon - r.Y
-	if skyH < 64 {
+	if skyH < 112 {
 		return // the water stands too high to leave a sky
 	}
 	still := v.Motion == "off" || v.ReduceMotion
@@ -440,7 +464,8 @@ func (s *SeaState) drawSceneBackdrop(p *ui.Painter, r ui.Rect, v SeaView, wl flo
 
 	// Sun or moon: high in the sky by day and night, sitting just above the horizon at dawn and dusk.
 	bx := r.X + float32(light.u)*r.W
-	by := r.Y + float32(math.Max(40, float64(skyH)*0.30))
+	// Kept below the strip at the top where the page's own header sits.
+	by := r.Y + float32(math.Max(84, float64(skyH)*0.42))
 	if light.low {
 		by = s.frame.surfaceY(r, light.u) - 30
 		if by < r.Y+24 {
@@ -482,7 +507,7 @@ func (s *SeaState) drawSceneBackdrop(p *ui.Painter, r ui.Rect, v SeaView, wl flo
 			spd := 0.010 + float64(i%2)*0.004
 			drift := math.Mod(float64(i)*0.37+tt*spd+0.12, 1.30) - 0.15
 			cx := r.X + float32(drift)*r.W
-			cy := r.Y + 22 + float32(0.10+0.22*float64(i%3)/2)*(skyH-50)
+			cy := r.Y + 74 + float32(0.10+0.30*float64(i%3)/2)*(skyH-100)
 			arcs := 3 + i%3
 			for k := 0; k < arcs; k++ {
 				x := cx + (float32(k)-float32(arcs)/2)*adv*1.9
@@ -507,7 +532,7 @@ func (s *SeaState) drawSceneBackdrop(p *ui.Painter, r ui.Rect, v SeaView, wl flo
 			spd := 0.022 + float64(i%3)*0.006
 			drift := math.Mod(float64(i)*0.21+tt*spd+0.12, 1.22) - 0.11
 			x := r.X + float32(drift)*r.W
-			y := r.Y + 20 + float32(0.08+0.16*float64(i%3))*(skyH-40) + float32(2.5*math.Sin(tt*1.6+float64(i)))
+			y := r.Y + 72 + float32(0.08+0.20*float64(i%3))*(skyH-96) + float32(2.5*math.Sin(tt*1.6+float64(i)))
 			beat := 0
 			if !still {
 				beat = int(math.Floor(tt*3.2+float64(i)*0.7)) % len(wing)
@@ -535,25 +560,31 @@ func (s *SeaState) drawSceneEncounters(p *ui.Painter, r ui.Rect, v SeaView, wl f
 			s.scene.nextSpawnAt = now.Add(time.Duration(20+int(s.scene.nextRand()*18)) * time.Second)
 		} else if !now.Before(s.scene.nextSpawnAt) {
 			kind := pickWeightedEncounter(&s.scene, v, now)
+			if kind == "" {
+				// Nothing belongs in these conditions: look again in a while.
+				s.scene.nextSpawnAt = now.Add(40 * time.Second)
+			}
 			dur := encounterDuration(kind)
 			dir := 1.0
 			if (kind == EncounterPirate || kind == EncounterWhale) && s.scene.nextRand() < 0.45 {
 				dir = -1.0
 			}
-			s.scene.active = &activeEncounter{
-				kind:      kind,
-				startedAt: now,
-				duration:  dur,
-				dir:       dir,
-				seed:      uint32(now.UnixNano() ^ 0x5bf03635),
-				natural:   true,
+			if kind != "" {
+				s.scene.active = &activeEncounter{
+					kind:      kind,
+					startedAt: now,
+					duration:  dur,
+					dir:       dir,
+					seed:      uint32(now.UnixNano() ^ 0x5bf03635),
+					natural:   true,
+				}
+				waitSec := 65 + int(s.scene.nextRand()*55)
+				if v.Running {
+					waitSec = 45 + int(s.scene.nextRand()*45)
+				}
+				s.scene.nextSpawnAt = now.Add(dur + time.Duration(waitSec)*time.Second)
+				spawnedNatural = kind
 			}
-			waitSec := 65 + int(s.scene.nextRand()*55)
-			if v.Running {
-				waitSec = 45 + int(s.scene.nextRand()*45)
-			}
-			s.scene.nextSpawnAt = now.Add(dur + time.Duration(waitSec)*time.Second)
-			spawnedNatural = kind
 		}
 	}
 	if s.scene.active != nil {
@@ -566,6 +597,9 @@ func (s *SeaState) drawSceneEncounters(p *ui.Painter, r ui.Rect, v SeaView, wl f
 		v.OnEncounter(spawnedNatural)
 	}
 	if act == nil {
+		s.mu.Lock()
+		s.scene.bumpAmt = 0 // nothing stands in the water any more
+		s.mu.Unlock()
 		return false
 	}
 
@@ -641,717 +675,414 @@ func (s *SeaState) drawSceneEncounters(p *ui.Painter, r ui.Rect, v SeaView, wl f
 	waveSample := func(xNorm float64) (surfY float32, surgeX float32, slope float64) {
 		surfY = frame.surfaceY(r, xNorm)
 		slope = frame.surfaceSlope(r, xNorm)
-		// Clamp tilt so boats and creatures rock gracefully without distortion
-		if slope > 0.26 {
-			slope = 0.26
-		} else if slope < -0.26 {
-			slope = -0.26
+		// Things rock with the water, but only gently: a character grid shears badly if tilted far.
+		slope *= 0.45
+		if slope > 0.09 {
+			slope = 0.09
+		} else if slope < -0.09 {
+			slope = -0.09
 		}
 		surgeX = float32(-slope * 22) // a little horizontal surge down the face of the wave
 		return surfY, surgeX, slope
 	}
 
-	// Center numeral readability protection: gently soften alpha if an encounter glides right across "25:00"
-	numeralSoften := func(cx, cy float32) float64 {
-		if compact {
-			return 1.0
-		}
-		nuDx := math.Abs(float64(cx-(r.X+r.W*0.5)) / math.Max(1, float64(r.W)))
-		nuDy := math.Abs(float64(cy-(r.Y+r.H*0.47)) / math.Max(1, float64(r.H)))
-		if nuDx < 0.17 && nuDy < 0.14 {
-			return 0.42
-		}
-		return 1.0
+	// Every encounter is written in characters only, in full-strength ink, and stands in the real
+	// water: it rides the waterline the sea drew, the sea is knocked out behind its body so it reads
+	// as solid, and whatever is below the surface is simply not drawn.
+	_, _, _, _, _ = whaleMid, whaleHigh, hullMid, compact, surfFrac
+	paper := LightPalette.Paper
+	if v.Dark {
+		paper = DarkPalette.Paper
 	}
+	noClip := r.Y + r.H + 1000
 
-	// drawTiltedSprite renders multi-line ASCII art with smooth rigid-body pitch tilt (slope)
-	// so hulls, masts, and swimming silhouettes organically rock over every wave crest at 60fps.
-	drawTiltedSprite := func(lines []string, cx, baseY float32, slope float64, col ui.Color, alphaScale float64) ui.Rect {
-		if len(lines) == 0 || alphaScale <= 0.01 {
+	type sline struct {
+		text string
+		col  ui.Color
+	}
+	lines := func(col ui.Color, rows ...string) []sline {
+		out := make([]sline, len(rows))
+		for k, t := range rows {
+			out[k] = sline{t, col}
+		}
+		return out
+	}
+	// mirror flips a sprite left-to-right, swapping the characters that have a handedness.
+	mirror := func(in []sline) []sline {
+		swap := map[rune]rune{'/': '\\', '\\': '/', '(': ')', ')': '(', '<': '>', '>': '<', '`': '\'', '\'': '`', '[': ']', ']': '['}
+		w := 0
+		for _, l := range in {
+			if n := len([]rune(l.text)); n > w {
+				w = n
+			}
+		}
+		out := make([]sline, len(in))
+		for k, l := range in {
+			rs := []rune(l.text)
+			for len(rs) < w {
+				rs = append(rs, ' ')
+			}
+			for a, b := 0, len(rs)-1; a < b; a, b = a+1, b-1 {
+				rs[a], rs[b] = rs[b], rs[a]
+			}
+			for a, ch := range rs {
+				if m, ok := swap[ch]; ok {
+					rs[a] = m
+				}
+			}
+			out[k] = sline{string(rs), l.col}
+		}
+		return out
+	}
+	// sprite draws rows so that the bottom of the last row sits at baseY, tilted by slope around cx.
+	// Cells that fall below clipY are under water and skipped.
+	sprite := func(rows []sline, cx, baseY float32, slope float64, alpha float64, clipY float32) ui.Rect {
+		w := 0
+		for _, l := range rows {
+			if n := len([]rune(l.text)); n > w {
+				w = n
+			}
+		}
+		bw := float32(w) * adv
+		startX := cx - bw/2
+		topY := baseY - float32(len(rows))*lineH
+		a := float32(math.Min(1, alpha))
+		if a <= 0.01 {
 			return ui.Rect{}
 		}
-		maxCols := 0
-		for _, ln := range lines {
-			if n := len([]rune(ln)); n > maxCols {
-				maxCols = n
-			}
-		}
-		bw := float32(maxCols) * adv
-		bh := float32(len(lines)) * lineH
-		startX := cx - bw/2
-		startY := baseY - bh
-		alphaScale *= numeralSoften(cx, baseY-bh*0.5)
-		finalCol := col.Alpha(float32(math.Min(1, alphaScale)))
-
-		for li, ln := range lines {
-			rowY := startY + float32(li)*lineH
-			dyFromBase := float64(rowY - baseY) // negative above waterline
-			x := startX
-			for _, ch := range ln {
-				if ch != ' ' {
-					dx := float64(x + adv*0.5 - cx)
-					// Small-angle rotation around (cx, baseY): x' = x - dy*slope, y' = y + dx*slope
-					rx := x - float32(dyFromBase*slope*0.58)
-					ry := rowY + float32(dx*slope) + asc
-					p.Glyphs(s.scene.shapeRune(ch), rx, ry, finalCol)
+		// Two passes: first clear the sea behind every cell of the body, then write the characters,
+		// so a row's knock-out can never wipe the underscores of the row above it.
+		for pass := 0; pass < 2; pass++ {
+			for ri, l := range rows {
+				rs := []rune(l.text)
+				first, last := -1, -1
+				for k, ch := range rs {
+					if ch != ' ' {
+						if first < 0 {
+							first = k
+						}
+						last = k
+					}
 				}
-				x += adv
+				for k := first; first >= 0 && k <= last; k++ {
+					x := startX + float32(k)*adv
+					y := topY + float32(ri)*lineH + float32(float64(x+adv/2-cx)*slope)
+					if y+lineH*0.5 > clipY {
+						continue
+					}
+					if pass == 0 {
+						p.Fill(ui.Rect{X: x - 0.5, Y: y, W: adv + 1, H: lineH + 0.5}, paper.Alpha(a), 0)
+					} else if rs[k] != ' ' {
+						p.Glyphs(s.scene.shapeRune(rs[k]), x, y+asc, l.col.Alpha(a))
+					}
+				}
 			}
 		}
-		return ui.Rect{X: startX, Y: startY, W: bw, H: bh}
+		return ui.Rect{X: startX, Y: topY, W: bw, H: float32(len(rows)) * lineH}
 	}
-
-	// drawSpriteLine renders a single tilted line at (cx, y) with custom color.
-	drawTiltedLine := func(ln string, cx, baseY, rowOffsetY float32, slope float64, col ui.Color, alphaScale float64) {
-		if ln == "" || alphaScale <= 0.01 {
-			return
+	mark := func(ch rune, x, y float32, col ui.Color, alpha float64) {
+		if alpha > 0.02 {
+			p.Glyphs(s.scene.shapeRune(ch), x-adv/2, y+asc*0.5, col.Alpha(float32(math.Min(1, alpha))))
 		}
-		n := len([]rune(ln))
-		bw := float32(n) * adv
-		startX := cx - bw/2
-		rowY := baseY + rowOffsetY
-		alphaScale *= numeralSoften(cx, rowY)
-		finalCol := col.Alpha(float32(math.Min(1, alphaScale)))
-		dyFromBase := float64(rowOffsetY)
-		x := startX
-		for _, ch := range ln {
+	}
+	word := func(text string, cx, y float32, col ui.Color, alpha float64) {
+		rs := []rune(text)
+		x := cx - float32(len(rs))*adv/2 + adv/2
+		for _, ch := range rs {
 			if ch != ' ' {
-				dx := float64(x + adv*0.5 - cx)
-				rx := x - float32(dyFromBase*slope*0.58)
-				ry := rowY + float32(dx*slope) + asc
-				p.Glyphs(s.scene.shapeRune(ch), rx, ry, finalCol)
+				mark(ch, x, y, col, alpha)
 			}
 			x += adv
 		}
 	}
-
-	// drawWaterWake paints a soft translucent reflection + undulating foam collar along the live wave line.
-	drawWaterWake := func(xNorm float64, halfW float32, col ui.Color, alpha float64) {
-		if alpha <= 0.01 {
-			return
+	// wake leaves a short run of brighter water glyphs on the surface behind something that moves.
+	wake := func(xNorm float64, dir float64, alpha float64) {
+		for k := 1; k <= 5; k++ {
+			u := xNorm - dir*float64(k)*0.022
+			if u < 0.01 || u > 0.99 {
+				continue
+			}
+			ch := '~'
+			if k%2 == 0 {
+				ch = '≈'
+			}
+			mark(ch, r.X+float32(u)*r.W, frame.surfaceY(r, u)-lineH*0.2, foamCol, alpha*(1.0-float64(k)/6.5))
 		}
-		wy, sx, sl := waveSample(xNorm)
-		cx := r.X + float32(xNorm)*r.W + sx
-		// Soft translucent shadow/reflection pill beneath hull
-		refl := ui.Rect{X: cx - halfW*0.95, Y: wy - 2, W: halfW * 1.9, H: 11}
-		p.FillRadialGradient(refl, ui.RadialGradient{
-			Stops: []ui.GradientStop{
-				{Color: col.Alpha(float32(0.20 * alpha)), At: 0.0},
-				{Color: ui.Transparent, At: 1.0},
-			},
-		}, 6)
-		// Subtle wave-following shimmer ripples
-		drawTiltedLine("~  ·  ~  ·  ~", cx, wy+3, 0, sl*0.85, foamCol, 0.56*alpha)
-		drawTiltedLine("·   ~   ·", cx, wy+11, 0, sl*0.6, foamCol, 0.30*alpha)
 	}
-
-	// drawGlow paints a smooth circular radial atmospheric glow with zero square boundary clipping.
-	drawGlow := func(gx, gy, rad float32, col ui.Color, alpha float64) {
-		if alpha <= 0.01 || rad <= 1 {
-			return
-		}
-		rect := ui.Rect{X: gx - rad, Y: gy - rad, W: rad * 2, H: rad * 2}
-		p.FillRadialGradient(rect, ui.RadialGradient{
-			Stops: []ui.GradientStop{
-				{Color: col.Alpha(float32(alpha)), At: 0.0},
-				{Color: col.Alpha(float32(alpha * 0.36)), At: 0.40},
-				{Color: ui.Transparent, At: 0.76},
-				{Color: ui.Transparent, At: 1.0},
-			},
-		}, rad)
-	}
+	ea := edgeAlpha
+	bumpU, bumpAmt := 0.0, 0.0
 
 	var lastBounds ui.Rect
 
 	switch act.kind {
 	case EncounterAngler:
-		// Serene coastal fishing skiff drifting smoothly with the swell, warm bow lantern, swaying silk line & leaping fish.
-		var xNorm float64
-		switch {
-		case prog < 0.22:
-			t := prog / 0.22
-			ease := 1 - (1-t)*(1-t)*(1-t)
-			xNorm = -0.06 + ease*0.29
-		case prog < 0.80:
-			t := (prog - 0.22) / 0.58
-			xNorm = 0.23 + t*0.14 + 0.012*math.Sin(tt*0.75)
-		default:
-			t := (prog - 0.80) / 0.20
-			xNorm = 0.37 + t*t*0.74
+		// A small boat at rest: one figure, a rod, a lantern at the stern, a line down to a float.
+		xNorm := 0.20 + 0.22*prog
+		wy, sx, sl := waveSample(xNorm)
+		cx := r.X + float32(xNorm)*r.W + sx
+		boat := lines(hullCol,
+			"     o    ,",
+			"    /|\\  /",
+			" ___/_\\_/___",
+			" \\_________/",
+		)
+		b := sprite(boat, cx, wy+lineH*0.9, sl, ea, noClip)
+		mark('*', b.X+adv*1.5, b.Y+lineH*1.6, lanternCol, ea*(0.75+0.25*math.Sin(tt*3.1)))
+		// The line hangs from the rod tip to a float bobbing on the surface a little way off.
+		tipX, tipY := b.X+adv*10.5, b.Y+lineH*0.3
+		floatU := xNorm + float64((b.W*0.5+adv*3.5)/r.W)
+		floatX := r.X + float32(floatU)*r.W
+		floatY := frame.surfaceY(r, floatU) - lineH*0.1
+		for k := 1; k <= 4; k++ {
+			f := float32(k) / 5
+			mark('\'', tipX+(floatX-tipX)*f, tipY+(floatY-tipY)*f*f, hullCol, ea*0.7)
 		}
-		baseY, surgeX, slope := waveSample(xNorm)
-		cx := r.X + float32(xNorm)*r.W + surgeX
-
-		// Shimmering water reflection + soft bow lantern glow
-		drawWaterWake(xNorm, adv*9.5, hullMid, edgeAlpha)
-		lanternX := cx - adv*5.8 - float32(float64(-lineH*1.6)*slope*0.58)
-		lanternY := baseY - lineH*1.4 + float32(float64(-adv*5.8)*slope)
-		lanternPulse := 0.82 + 0.18*math.Sin(tt*3.4)
-		drawGlow(lanternX, lanternY, 20, lanternCol, 0.30*lanternPulse*edgeAlpha)
-
-		// Layered multi-tone skiff & angler silhouette (rocking smoothly with wave slope!)
-		// Top hat + bent rod arc (accent/mid tone)
-		drawTiltedLine(`      _        _.--'`, cx, baseY, -lineH*4.8, slope, hullMid, 0.90*edgeAlpha)
-		drawTiltedLine(`     (_)    .-'     `, cx, baseY, -lineH*3.8, slope, hullCol, 0.94*edgeAlpha)
-		drawTiltedLine(`     /|\  .'        `, cx, baseY, -lineH*2.8, slope, hullCol, 0.94*edgeAlpha)
-		// Bow lantern glint + cabin seat
-		drawTiltedLine(`  ✦  / \ /          `, cx, baseY, -lineH*1.8, slope, lanternCol, 0.92*edgeAlpha)
-		// Deep navy carved skiff hull
-		hullLines := []string{
-			` .__/___\_________. `,
-			`  \_______________/ `,
+		bob := 0.0
+		if reacting {
+			bob = 5 * math.Sin(reactAge*14) * math.Exp(-reactAge*2)
 		}
-		hullRect := drawTiltedSprite(hullLines, cx, baseY+lineH*0.2, slope, hullCol, 0.95*edgeAlpha)
-		lastBounds = ui.Rect{X: hullRect.X, Y: baseY - lineH*5.2, W: hullRect.W, H: lineH * 5.6}
-
-		// Curved swaying fishing line anchored accurately to the tilted rod tip
-		rodDx := float64(adv * 9.0)
-		rodDy := float64(-lineH * 4.4)
-		rodTipX := cx + float32(rodDx) - float32(rodDy*slope*0.58)
-		rodTipY := baseY + float32(rodDy) + float32(rodDx*slope)
-		floatXNorm := math.Max(0.02, math.Min(0.98, float64(rodTipX-r.X)/math.Max(1, float64(r.W))))
-		waterAtFloatY, _, floatSlope := waveSample(floatXNorm)
-
-		bitePhase := math.Mod(prog*2.8, 1.0)
-		biting := (prog >= 0.22 && prog <= 0.80 && bitePhase > 0.60 && bitePhase < 0.88) || reacting
-
-		// Draw smooth dotted fishing line down to the live wave surface
-		steps := max(3, int(math.Round(float64(waterAtFloatY-rodTipY)/float64(lineH*0.72))))
-		if steps > 8 {
-			steps = 8
-		}
-		for k := 1; k <= steps; k++ {
-			kf := float64(k) / float64(steps)
-			sway := float32(math.Sin(tt*2.4+kf*2.6) * 2.4 * math.Sin(kf*math.Pi))
-			lx := rodTipX + sway
-			ly := rodTipY + float32(kf)*float32(waterAtFloatY-rodTipY)
-			ch := '·'
-			if k%2 == 1 {
-				ch = '│'
+		mark('o', floatX, floatY+float32(bob), accentCol, ea)
+		if reacting && reactAge < 1.3 {
+			// A bite: a fish arcs out of the water by the float.
+			t := reactAge / 1.3
+			fish := "><>"
+			if t > 0.5 {
+				fish = "<><"
 			}
-			p.Glyphs(s.scene.shapeRune(ch), lx, ly+asc*0.5, accentCol.Alpha(float32(0.62*edgeAlpha)))
+			word(fish, floatX+float32(18*math.Sin(t*math.Pi)), floatY-float32(38*math.Sin(t*math.Pi)), accentCol, ea)
 		}
-
-		// Bobber & leaping fish reaction synced to the live wave surface
-		if biting {
-			drawTiltedLine("!", cx-adv*3.2, baseY, -lineH*5.6, slope, accentCol, 0.96*edgeAlpha)
-			jumpT := 0.5
-			if reacting {
-				jumpT = math.Min(1, reactAge/1.15)
-			} else {
-				jumpT = (bitePhase - 0.60) / 0.28
-			}
-			arcY := float32(math.Sin(jumpT*math.Pi)) * lineH * 2.4
-			arcX := float32((jumpT - 0.5) * float64(adv*5.0))
-			fishSlope := -(math.Cos(jumpT * math.Pi)) * 0.35
-			drawTiltedLine("<°)))><", rodTipX+arcX+adv*1.2, waterAtFloatY-arcY-lineH*0.3, 0, fishSlope, accentCol, 0.96*edgeAlpha)
-			// Expanding splash ring right on the wave surface
-			ringR := float32(8 + jumpT*22)
-			ringAlpha := float32((1.0 - jumpT) * 0.55 * edgeAlpha)
-			if ringAlpha > 0.02 {
-				p.Stroke(ui.Rect{X: rodTipX - ringR, Y: waterAtFloatY - 4, W: ringR * 2, H: 8}, foamCol.Alpha(ringAlpha), 4, 1.2)
-			}
-			drawTiltedLine("° ~ · ~ °", rodTipX, waterAtFloatY+2, 0, floatSlope, foamCol, 0.80*edgeAlpha)
-		} else {
-			drawGlow(rodTipX, waterAtFloatY, 8, accentCol, 0.28*edgeAlpha)
-			drawTiltedLine("~·~", rodTipX, waterAtFloatY+2, 0, floatSlope, foamCol, 0.66*edgeAlpha)
-		}
+		lastBounds = ui.Rect{X: b.X, Y: b.Y, W: b.W + adv*5, H: b.H}
 
 	case EncounterPirate:
-		// Grand tall-masted schooner riding every wave crest with billowing multi-tone sails, fluttering pennant & curved wake!
-		xNorm := -0.10 + prog*1.20
+		// A three-master crossing the whole sea, pennants streaming, leaving a wake.
+		xNorm := 0.5 - act.dir*0.68 + act.dir*1.36*prog
+		wy, sx, sl := waveSample(math.Max(0.01, math.Min(0.99, xNorm)))
+		cx := r.X + float32(xNorm)*r.W + sx
+		flag := "~"
+		if int(tt*3)%2 == 0 {
+			flag = "≈"
+		}
+		sails := lines(sailCol,
+			"       |"+flag,
+			"      /|\\    |"+flag,
+			"     /_|_\\  /|\\",
+			"    /__|__\\/_|_\\",
+		)
+		hull := lines(hullCol,
+			" ___\\__|_____|__/__",
+			" \\   o    o    o  /",
+			"  \\______________/",
+		)
+		ship := append(sails, hull...)
 		if act.dir < 0 {
-			xNorm = 1.10 - prog*1.20
+			ship = mirror(ship)
 		}
-		baseY, surgeX, slope := waveSample(xNorm)
-		cx := r.X + float32(xNorm)*r.W + surgeX
-
-		// Soft luminous sail backdrop + shimmering water wake underneath
-		drawWaterWake(xNorm, adv*13.0, hullMid, edgeAlpha)
-		drawGlow(cx, baseY-lineH*4.2, adv*10.5, sailCol, 0.14*edgeAlpha)
-
-		// Animated fluttering top pennant at 60fps
-		flagWave := int(math.Floor(tt*4.5)) % 3
-		flagR := []string{`|>~`, `|≈>`, `|~>`}[flagWave]
-		flagL := []string{`~<|`, `<≈|`, `<~|`}[flagWave]
-
-		var sailLines, hullLines []string
-		if act.dir >= 0 {
-			sailLines = []string{
-				`         ` + flagR + `          `,
-				`       .-/|   |\-.     `,
-				`      /  ||   ||  \    `,
-				`     /__ ||___|| __\   `,
-				`    /____||___||____\  `,
-			}
-			hullLines = []string{
-				`      _||___||___/     `,
-				`\____/  ·  ·  ·  \___/>`,
-				` \___________________/ `,
-			}
-		} else {
-			sailLines = []string{
-				`          ` + flagL + `         `,
-				`     .-/|   |\-.       `,
-				`    /  ||   ||  \      `,
-				`   /__ ||___|| __\     `,
-				`  /____||___||____\    `,
-			}
-			hullLines = []string{
-				`     \___||___||_      `,
-				`<\___/  ·  ·  ·  \____/`,
-				` \___________________/ `,
-			}
+		b := sprite(ship, cx, wy+lineH*1.1, sl*0.8, ea, noClip)
+		if xNorm > 0.03 && xNorm < 0.97 {
+			wake(xNorm-act.dir*0.085, act.dir, ea*0.9)
 		}
-
-		// Render billowing sails in crisp sea-blue, carved hull in deep navy — BOTH tilted seamlessly by live wave slope!
-		drawTiltedSprite(sailLines, cx, baseY-lineH*2.6, slope, sailCol, 0.90*edgeAlpha)
-		hullRect := drawTiltedSprite(hullLines, cx, baseY+lineH*0.2, slope, hullCol, 0.94*edgeAlpha)
-		lastBounds = ui.Rect{X: hullRect.X, Y: baseY - lineH*7.8, W: hullRect.W, H: lineH * 8.2}
-
-		// Click reaction: gentle lantern flash along portholes + celebratory gust
-		if reacting {
-			gust := math.Sin(math.Min(1, reactAge/1.6) * math.Pi)
-			drawGlow(cx, baseY-lineH*1.2, 26, lanternCol, 0.36*gust)
+		if reacting && reactAge < 0.9 {
+			// A warning shot: a puff from the gun deck.
+			t := reactAge / 0.9
+			mark('*', cx+float32(act.dir)*(b.W*0.5+float32(t)*46), wy-lineH*0.6-float32(10*math.Sin(t*math.Pi)), lanternCol, ea*(1-t))
 		}
-
-		// Curved trailing foamy wake following the ACTUAL wave height behind the stern!
-		wakeStep := -0.045
-		if act.dir < 0 {
-			wakeStep = 0.045
-		}
-		for wk := 1; wk <= 4; wk++ {
-			wxNorm := xNorm + wakeStep*float64(wk) - wakeStep*0.6
-			if wxNorm < 0.01 || wxNorm > 0.99 {
-				continue
-			}
-			wy, wsx, wsl := waveSample(wxNorm)
-			wx := r.X + float32(wxNorm)*r.W + wsx
-			wAlpha := (1.0 - float64(wk)*0.20) * 0.68 * edgeAlpha
-			glyph := []string{"≈ ~ ·", "~ · ~", "· ~ ·", "·   ·"}[wk-1]
-			drawTiltedLine(glyph, wx, wy+3, 0, wsl, foamCol, wAlpha)
-		}
+		lastBounds = b
 
 	case EncounterWhale:
-		// Iconic Blue Whale: sculpted two-tone giant breaching smoothly, riding the swell,
-		// emitting luminous concentric acoustic rings & physics mist fountain, then lifting its fluke into a dive!
-		xNorm := 0.12 + prog*0.76
-		if act.dir < 0 {
-			xNorm = 0.88 - prog*0.76
-		}
-		baseY, surgeX, waveSlope := waveSample(xNorm)
-		cx := r.X + float32(xNorm)*r.W + surgeX
-
-		reactPulse := 0.0
-		if reacting {
-			reactPulse = math.Sin(math.Min(1, reactAge/1.2) * math.Pi)
-		}
-
-		if prog < 0.76 {
-			// Smooth breach emergence (0..0.18) -> graceful wave-riding glide (0.18..0.60) -> arching nose-down dive (0.60..0.76)
-			subT := prog / 0.76
-			emerge := 1.0
-			divePitch := 0.0
-			if subT < 0.22 {
-				u := subT / 0.22
-				emerge = u * u * (3 - 2*u)
-				divePitch = -0.22 * (1.0 - u) * act.dir // nose up on breach
-			} else if subT > 0.76 {
-				u := (subT - 0.76) / 0.24
-				emerge = 1.0 - 0.55*u*u
-				divePitch = 0.28 * u * act.dir // nose down into dive
+		// A blue whale surfaces, breathes, rolls under and shows its flukes. The water lifts over it.
+		xNorm := 0.5 + act.dir*(0.5-prog)*0.42
+		wy, sx, sl := waveSample(xNorm)
+		cx := r.X + float32(xNorm)*r.W + sx
+		clip := wy + lineH*1.3
+		up := smoothstep01(prog/0.13) * smoothstep01((0.66-prog)/0.10) // body above water
+		if up > 0.01 {
+			body := lines(whaleBack,
+				"      .-\"\"\"\"\"\"-.",
+				"   .-'          `-.   __",
+				"  /  o             `-'  )",
+				"  `-.________________.-'",
+			)
+			if act.dir > 0 {
+				body = mirror(body)
 			}
-			totalSlope := waveSlope*0.85 + divePitch
-			whaleBaseY := baseY + float32((1.0-emerge)*float64(lineH)*3.2) - float32(reactPulse)*lineH*0.9
-
-			// Underwater luminous silhouette glow + foam collar right along the wave line
-			drawWaterWake(xNorm, adv*15.5, whaleBack, emerge*edgeAlpha)
-			drawGlow(cx, whaleBaseY-lineH*2.2, adv*14.0, whaleHigh, 0.16*emerge*edgeAlpha)
-
-			// Concentric acoustic rings expanding gently during song/click!
-			if (prog >= 0.22 && prog <= 0.66) || reacting {
-				ringCycle := math.Mod(tt*0.55, 1.0)
+			sink := float32(1-up) * lineH * 4.4
+			b := sprite(body, cx, wy+lineH*1.5+sink, sl*0.5, ea, clip)
+			lastBounds = b
+			// The blow: a short fountain over the blowhole, every few seconds and whenever it is greeted.
+			puff := math.Mod(prog*float64(act.duration.Seconds()), 3.4) / 1.1
+			if reacting {
+				puff = reactAge / 1.1
+			}
+			if up > 0.85 && puff >= 0 && puff < 1 {
+				hx := cx - float32(act.dir)*adv*2.5
+				hy := b.Y - lineH*0.2
+				pa := ea * math.Sin(puff*math.Pi)
+				word("\\|/", hx, hy-float32(puff)*6, foamCol, pa)
+				word("' '", hx, hy-lineH-float32(puff)*12, foamCol, pa*0.8)
 				if reacting {
-					ringCycle = math.Min(1, reactAge/1.8)
-				}
-				for ri := 0; ri < 2; ri++ {
-					rc := math.Mod(ringCycle+float64(ri)*0.48, 1.0)
-					radX := float32(24 + rc*86)
-					radY := float32(10 + rc*34)
-					ra := float32(math.Sin(rc*math.Pi) * (0.34 + 0.34*reactPulse) * edgeAlpha)
-					if ra > 0.02 {
-						p.Stroke(ui.Rect{X: cx - radX, Y: whaleBaseY - lineH*2.2 - radY, W: radX * 2, H: radY * 2}, whaleHigh.Alpha(ra), radY, 1.3)
-					}
+					mark('♪', hx+adv*3.5, hy-lineH*1.6-float32(puff)*16, accentCol, pa)
 				}
 			}
-
-			// Sculpted two-tone whale silhouette (deep ocean dorsal crown + lighter belly & animated undulating tail!)
-			tailFlip := math.Sin(tt*2.8) > 0
-			var backLines, bellyLines []string
-			if act.dir >= 0 {
-				tTop := `|\  `
-				tMid := `| \_`
-				if tailFlip {
-					tTop = ` \  `
-					tMid = `/ \_`
-				}
-				backLines = []string{
-					`          _.-------._       `,
-					`      .-'             '-.   `,
-					tTop + `.'                 o '. `,
-				}
-				bellyLines = []string{
-					tMid + `____                   \`,
-					`    '-.   ~~~~~~~   _____.' `,
-					`        '---------'         `,
-				}
-			} else {
-				tTop := `  /|`
-				tMid := `_/ |`
-				if tailFlip {
-					tTop = `  / `
-					tMid = `_/ \`
-				}
-				backLines = []string{
-					`       _.-------._          `,
-					`   .-'             '-.      `,
-					` .' o                 '.` + tTop,
-				}
-				bellyLines = []string{
-					`/                   ____` + tMid,
-					` '._____   ~~~~~~~   .-'    `,
-					`         '---------'        `,
-				}
+			bumpU, bumpAmt = xNorm, up
+		} else if prog >= 0.70 {
+			// Flukes: up, held, and down again.
+			t := (prog - 0.70) / 0.30
+			rise := smoothstep01(t/0.25) * smoothstep01((1-t)/0.30)
+			tail := lines(whaleBack,
+				" __     __",
+				" \\ `-.-' /",
+				"  `.   .'",
+				"    | |",
+				"    | |",
+			)
+			b := sprite(tail, cx, wy+lineH*1.2+float32(1-rise)*lineH*5.2, 0, ea, clip)
+			lastBounds = b
+			bumpU, bumpAmt = xNorm, 0.5*rise
+			if t > 0.72 {
+				// the splash it leaves
+				ring := (t - 0.72) / 0.28
+				word("~ ≈ ~", cx, wy-lineH*0.2, foamCol, ea*(1-ring))
 			}
-			drawTiltedSprite(backLines, cx, whaleBaseY-lineH*2.4, totalSlope, whaleBack, 0.94*emerge*edgeAlpha)
-			bRect := drawTiltedSprite(bellyLines, cx, whaleBaseY+lineH*0.5, totalSlope, whaleMid, 0.90*emerge*edgeAlpha)
-			lastBounds = ui.Rect{X: bRect.X, Y: whaleBaseY - lineH*5.6, W: bRect.W, H: lineH * 6.2}
-
-			// Physics-based arched mist fountain spray from blowhole
-			if (prog >= 0.18 && prog <= 0.68) || reacting {
-				spT := math.Mod(tt*0.85, 1.0)
-				if reacting {
-					spT = math.Min(1, reactAge/1.4)
-				}
-				spAlpha := math.Sin(spT*math.Pi) * 0.92 * emerge * edgeAlpha
-				holeOffX := adv * 5.2
-				if act.dir < 0 {
-					holeOffX = -adv * 5.2
-				}
-				holeX := cx + holeOffX - float32(float64(-lineH*4.8)*totalSlope*0.58)
-				holeY := whaleBaseY - lineH*4.8 + float32(float64(holeOffX)*totalSlope)
-				drawGlow(holeX, holeY-lineH*1.4, 22, whaleHigh, 0.24*spAlpha)
-
-				// Rising and gracefully arcing fountain droplets (60fps ballistic curve!)
-				for di := -2; di <= 2; di++ {
-					spread := float64(di)
-					dx := float32(spread * (4.5 + spT*11.0))
-					// Parabolic arc: shoot up fast, curve outward & gently fall
-					dy := -float32((32.0*spT - 18.0*spT*spT) * (1.0 - math.Abs(spread)*0.12))
-					glyph := '·'
-					if di == 0 && spT < 0.55 {
-						glyph = '│'
-					} else if math.Abs(spread) == 1 {
-						glyph = '°'
-					} else if reacting && spT > 0.3 {
-						glyph = '✦'
-					}
-					p.Glyphs(s.scene.shapeRune(glyph), holeX+dx, holeY+dy+asc*0.5, whaleHigh.Alpha(float32(spAlpha)))
-				}
-			}
-		} else {
-			// Graceful fluke dive: tail lifts high out of the wave crest then slips cleanly beneath a glowing foam ring!
-			tailT := (prog - 0.76) / 0.24
-			lift := math.Sin(tailT * math.Pi)
-			sinkY := baseY - float32(lift*float64(lineH)*1.2) + float32(tailT*tailT*float64(lineH)*2.4)
-			tailLines := []string{
-				`  |\     /|  `,
-				`   \ \ / /   `,
-				`    \   /    `,
-				`     \ /     `,
-			}
-			tAlpha := (1.0 - tailT*0.78) * 0.94
-			lastBounds = drawTiltedSprite(tailLines, cx, sinkY, waveSlope*0.6, whaleBack, tAlpha)
-			// Lingering expanding foam ring on the live wave surface
-			ringR := float32(16 + tailT*38)
-			p.Stroke(ui.Rect{X: cx - ringR, Y: baseY - 5, W: ringR * 2, H: 10}, foamCol.Alpha(float32((1.0-tailT)*0.55)), 5, 1.3)
-			drawTiltedLine("~ · ≈ · ~", cx, baseY+4, 0, waveSlope, foamCol, (1.0-tailT)*0.75)
 		}
 
 	case EncounterDolphin:
-		// Graceful pod of 3 sleek dolphins leaping along true ballistic arcs with velocity-aligned pitch tilt
-		// and synchronized live wave splashes at every exit & re-entry point!
-		boost := 1.0
-		if reacting {
-			boost = 1.35
+		// Three dolphins travel across, each leaping in its own time.
+		dolphin := lines(accentCol,
+			"    _.-._",
+			" ,-'   o `>",
+			" `~--.__.-'",
+		)
+		if act.dir < 0 {
+			dolphin = mirror(dolphin)
 		}
-		podOffsets := []struct {
-			lag   float64
-			scale float64
-			col   ui.Color
-			alpha float64
-		}{
-			{lag: 0.00, scale: 1.00, col: whaleBack, alpha: 0.96},
-			{lag: 0.11, scale: 0.90, col: whaleMid, alpha: 0.88},
-			{lag: 0.22, scale: 0.80, col: hullMid, alpha: 0.78},
-		}
-
-		for pi, member := range podOffsets {
-			mp := prog - member.lag
-			if mp < 0 || mp > 0.96 {
+		var hit ui.Rect
+		for k := 0; k < 3; k++ {
+			xNorm := 0.5 - act.dir*0.56 + act.dir*1.12*prog - act.dir*float64(k)*0.085
+			if xNorm < 0.02 || xNorm > 0.98 {
 				continue
 			}
-			xNorm := 0.08 + mp*0.84
-			if act.dir < 0 {
-				xNorm = 0.92 - mp*0.84
+			cyc := math.Mod(prog*5.2+float64(k)*0.37, 1.0)
+			if reacting {
+				cyc = math.Mod(reactAge/1.1+float64(k)*0.2, 1.0) * 0.6
 			}
-			wy, sx, wSlope := waveSample(xNorm)
-			dx := r.X + float32(xNorm)*r.W + sx
-
-			// 3 clean ballistic leaps across the horizon
-			cycle := mp * 3.0
-			leapIdx := math.Floor(cycle)
-			leapPhase := cycle - leapIdx // [0, 1) within current jump
-			arcH := math.Sin(leapPhase * math.Pi)
-			// Analytical derivative of sin(leapPhase*pi) gives exact ballistic pitch angle!
-			// Ascending -> nose UP, apex -> level, descending -> nose DOWN!
-			velSlope := -math.Cos(leapPhase*math.Pi) * 0.34 * act.dir
-			dy := wy - float32(arcH*boost*member.scale)*lineH*3.3
-
-			var dolLines []string
-			if act.dir >= 0 {
-				dolLines = []string{
-					`     _.-._     `,
-					` |\.'    o'-.  `,
-					`  \_____.--' \ `,
+			wy, _, _ := waveSample(xNorm)
+			cx := r.X + float32(xNorm)*r.W
+			if cyc < 0.6 {
+				jt := cyc / 0.6
+				h := float32(math.Sin(jt*math.Pi)) * lineH * 3.4
+				tilt := -math.Cos(jt*math.Pi) * 0.16 * act.dir
+				b := sprite(dolphin, cx, wy+lineH*1.1-h, -tilt, ea, wy+lineH*0.5)
+				if hit.W == 0 {
+					hit = b
 				}
-			} else {
-				dolLines = []string{
-					`     _.-._     `,
-					`  .-'o    './| `,
-					` / '--._____/  `,
-				}
-			}
-
-			// Fade gracefully as dolphin slips below the wave surface at leapPhase near 0 or 1
-			surfVis := math.Min(1.0, arcH*3.4+0.15)
-			b := drawTiltedSprite(dolLines, dx, dy+lineH*0.6, velSlope, member.col, member.alpha*surfVis*edgeAlpha)
-			if pi == 0 {
-				lastBounds = b
-			}
-
-			// Sparkling splash arcs right on the live wave surface at exit (0..0.22) and plunge (0.78..1.0)!
-			if leapPhase < 0.24 || leapPhase > 0.76 {
-				spFrac := leapPhase / 0.24
-				if leapPhase > 0.76 {
-					spFrac = (1.0 - leapPhase) / 0.24
-				}
-				spA := math.Sin(spFrac*math.Pi) * 0.78 * edgeAlpha
-				ringR := float32(8 + (1.0-spFrac)*18)
-				p.Stroke(ui.Rect{X: dx - ringR, Y: wy - 4, W: ringR * 2, H: 8}, foamCol.Alpha(float32(spA*0.65)), 4, 1.2)
-				drawTiltedLine("° · ~ · °", dx, wy+2, 0, wSlope, foamCol, spA)
+			} else if cyc < 0.78 {
+				// where it went in
+				mark('∘', cx+float32(act.dir)*adv*3, wy-lineH*0.2, foamCol, ea*(1-(cyc-0.6)/0.18))
 			}
 		}
+		if hit.W == 0 {
+			wy, _, _ := waveSample(0.5)
+			hit = ui.Rect{X: r.X + r.W*0.25, Y: wy - lineH*4, W: r.W * 0.5, H: lineH * 5}
+		}
+		lastBounds = hit
 
 	case EncounterLighthouse:
-		// Sculpted coastal headland lighthouse anchored on foaming rocks with real volumetric sweeping light cone & shooting stars!
-		xNorm := 0.16
-		if compact {
-			xNorm = 0.50
-		}
-		wy, sx, wSlope := waveSample(xNorm)
-		cx := r.X + float32(xNorm)*r.W + sx*0.25
-		// Lighthouse sits firmly on rocky headland right along the swell (gentle reef spray at base, no silly rock tipping!)
-		baseY := r.Y + float32(surfFrac)*r.H + (wy-(r.Y+float32(surfFrac)*r.H))*0.18
-
-		lanternX := cx
-		lanternY := baseY - lineH*5.4
-		sweep := math.Sin(tt * 1.45) // smooth -1..+1 continuous sweep
-		beamStrength := 0.55 + 0.45*math.Abs(sweep)
+		// A lighthouse on its rock, lamp turning: the beam is written in dashes that reach out,
+		// shorten and swing to the other side.
+		xNorm := 0.14
+		wy, _, _ := waveSample(xNorm)
+		cx := r.X + float32(xNorm)*r.W
+		tower := append(lines(accentCol,
+			"    /^\\",
+			"   [   ]",
+		), lines(hullCol,
+			"    |=|",
+			"    | |",
+			"    |=|",
+			"   /| |\\",
+			" _/_|_|_\\_",
+			"/_________\\",
+		)...)
+		b := sprite(tower, cx, wy+lineH*1.6, 0, ea, noClip)
+		lampX, lampY := b.X+adv*5, b.Y+lineH*1.5
+		turn := tt * 0.9
 		if reacting {
-			beamStrength = 1.0
+			turn = tt*0.9 + reactAge*5
 		}
-
-		// REAL VOLUMETRIC SWEEPING LIGHT BEAM (layered translucent horizontal-angled beam ribbons extending from lantern!)
-		beamDir := float32(1.0)
-		if sweep < 0 {
-			beamDir = -1.0
+		swing := math.Cos(turn) // +1 beam to the right, -1 to the left, 0 pointing at or away from us
+		mark('*', lampX, lampY, lanternCol, ea*(0.6+0.4*math.Abs(swing)))
+		reach := int(math.Abs(swing) * float64(r.W) * 0.62 / float64(adv))
+		side := float32(1)
+		if swing < 0 {
+			side = -1
 		}
-		beamLen := float32(math.Min(float64(r.W)*0.56, 360.0)) * float32(0.45+0.55*math.Abs(sweep))
-		if compact {
-			beamLen *= 0.55
-		}
-		beamCol := lanternCol
-		if !v.Dark {
-			beamCol = accentCol
-		}
-		// 28 finely overlapping soft light-cone slices for a silky, stair-step-free volumetric spotlight beam!
-		const coneSteps = 28
-		stepW := beamLen / coneSteps
-		for si := 0; si < coneSteps; si++ {
-			sf := float32(si) / float32(coneSteps)
-			segX0 := lanternX + beamDir*(6+sf*beamLen)
-			segW := stepW + 2.5
-			segH := 8 + sf*64
-			segY := lanternY - segH*0.5 - sf*18
-			if beamDir < 0 {
-				segX0 -= segW
+		for k := 3; k < reach; k++ {
+			f := float64(k) / math.Max(1, float64(reach))
+			// the beam thins out with distance: = = - - -  -   -
+			if (f > 0.45 && k%2 == 1) || (f > 0.75 && k%4 != 0) {
+				continue
 			}
-			// Smooth quadratic distance falloff
-			falloff := (1.0 - float64(sf)) * (1.0 - float64(sf)*0.65)
-			segAlpha := float32(falloff * 0.14 * beamStrength * edgeAlpha)
-			if reacting {
-				segAlpha *= 1.38
+			ch := '-'
+			if f < 0.25 {
+				ch = '='
 			}
-			if segAlpha > 0.005 {
-				p.FillGradient(ui.Rect{X: segX0, Y: segY, W: segW, H: segH}, ui.LinearGradient{
-					Angle: 180,
-					Stops: []ui.GradientStop{
-						{Color: ui.Transparent, At: 0.0},
-						{Color: beamCol.Alpha(segAlpha), At: 0.5},
-						{Color: ui.Transparent, At: 1.0},
-					},
-				}, 0)
+			x := lampX + side*float32(k)*adv
+			if x < r.X+2 || x > r.X+r.W-2 {
+				break
 			}
+			mark(ch, x, lampY+float32(f*f)*lineH*1.2, lanternCol, ea*(1-f)*0.95)
 		}
-
-		// Warm glowing lantern core halo
-		drawGlow(lanternX, lanternY, 26, beamCol, 0.44*beamStrength*edgeAlpha)
-		drawGlow(lanternX, lanternY, 10, ui.Hex("#FFFFFF"), 0.55*beamStrength*edgeAlpha)
-
-		// Sculpted coastal tower + striped body + rocky reef
-		towerTop := []string{
-			`      /\      `,
-			`     [✦]      `,
-			`    _| |_     `,
-		}
-		towerMid := []string{
-			`    |===|     `,
-			`   /|   |\    `,
-			`  /_|===|_\   `,
-		}
-		reefBase := []string{
-			` _/_______\_  `,
-			`/___________\ `,
-		}
-		drawTiltedSprite(towerTop, cx, baseY-lineH*4.8, 0, accentCol, 0.94*edgeAlpha)
-		drawTiltedSprite(towerMid, cx, baseY-lineH*1.8, 0, hullCol, 0.94*edgeAlpha)
-		bRect := drawTiltedSprite(reefBase, cx, baseY+lineH*0.2, 0, hullMid, 0.90*edgeAlpha)
-		lastBounds = ui.Rect{X: bRect.X, Y: baseY - lineH*7.8, W: bRect.W, H: lineH * 8.2}
-
-		// Live ocean wave spray washing softly against the headland reef
-		drawTiltedLine("~ · ≈ · ~ · ~", cx, wy+2, 0, wSlope*0.7, foamCol, 0.72*edgeAlpha)
-
-		// Smooth 60fps diagonal shooting stars with fading comet tails across upper-right sky
-		mCycle := math.Mod(prog*2.6, 1.0)
-		if mCycle < 0.36 {
-			mt := mCycle / 0.36
-			mx := r.X + r.W*float32(0.86-mt*0.30)
-			my := r.Y + r.H*float32(0.08+mt*0.18)
-			mAlpha := math.Sin(mt*math.Pi) * 0.92 * edgeAlpha
-			drawGlow(mx, my, 12, whaleHigh, 0.32*mAlpha)
-			for ti := 0; ti < 5; ti++ {
-				tf := float32(ti)
-				tx := mx + tf*8.5
-				ty := my - tf*5.0
-				ta := float32(mAlpha * (1.0 - float64(ti)*0.20))
-				ch := '·'
-				if ti == 0 {
-					ch = '✦'
-				} else if ti == 1 {
-					ch = '·'
-				}
-				p.Glyphs(s.scene.shapeRune(ch), tx, ty+asc*0.5, whaleHigh.Alpha(ta))
-			}
-		}
+		lastBounds = b
 
 	case EncounterAurora:
-		// Silky multi-curtain volumetric ocean-blue & aurora-teal light ribbons undulating smoothly at 60fps
-		// across the upper sky, dusted with delicate high-altitude starlight shimmer (zero blocky ASCII clutter!).
-		skyTop := r.Y + float32(math.Max(22, float64(r.H)*0.08))
-		curtainH := float32(math.Min(135, math.Max(68, float64(r.H)*0.24)))
-		if compact {
-			skyTop = r.Y + float32(r.H)*0.16
-			curtainH = float32(r.H) * 0.28
+		// Curtains of light hung in the night sky: columns of strokes whose length and brightness
+		// ripple slowly from one end to the other.
+		horizon := frame.surfaceY(r, 0.5)
+		top := r.Y + 78 // below the page header
+		room := horizon - top - lineH*2
+		if room < lineH*4 {
+			break
 		}
+		maxRows := int(math.Min(9, float64(room/lineH)))
+		span := r.W * 0.76
+		startX := r.X + r.W*0.12
+		cols := int(span / adv)
 		boost := 1.0
 		if reacting {
-			boost = 1.0 + 0.48*math.Sin(math.Min(1, reactAge/1.6)*math.Pi)
+			boost = 1.0 + 0.5*math.Exp(-reactAge*1.4)
 		}
-
-		// 64 finely overlapping translucent vertical curtains with continuous color blending (zero stripe edges!)
-		mixCol := func(a, b ui.Color, f float32) ui.Color {
-			lerpU8 := func(x, y uint8) uint8 {
-				return uint8(math.Round(float64(x) + (float64(y)-float64(x))*float64(f)))
-			}
-			return ui.Color{
-				R: lerpU8(a.R, b.R),
-				G: lerpU8(a.G, b.G),
-				B: lerpU8(a.B, b.B),
-				A: lerpU8(a.A, b.A),
-			}
-		}
-		const bands = 64
-		spanW := r.W * 0.80
-		startX := r.X + (r.W-spanW)*0.5
-		bandW := (spanW / float32(bands)) * 2.4
-		for bi := 0; bi < bands; bi++ {
-			u := float64(bi) / float64(bands-1)
+		for ci := 0; ci < cols; ci++ {
+			u := float64(ci) / float64(max(1, cols-1))
 			bell := math.Sin(u * math.Pi)
-			bell = bell * bell // silky feathered horizontal taper
-			w1 := math.Sin(u*4.8 - tt*0.85)
-			w2 := math.Sin(u*8.4 + tt*0.52)
-			waveY := float32((w1*0.62 + w2*0.38) * 18.0)
-			hScale := float32(0.74 + 0.26*(0.5+0.5*math.Sin(u*6.2-tt*1.05)))
-
-			// Smooth continuous color wave across ocean-blue -> aqua -> aurora-mint
-			ct := float32(0.5 + 0.5*math.Sin(u*3.6+tt*0.45))
-			var col ui.Color
-			if ct < 0.5 {
-				col = mixCol(auroraA, auroraB, ct*2)
-			} else {
-				col = mixCol(auroraB, auroraC, (ct-0.5)*2)
+			fold := 0.5 + 0.5*math.Sin(u*9.0+tt*0.35)
+			shimmer := 0.55 + 0.45*math.Sin(u*23.0-tt*1.1+float64(ci%3))
+			rows := 2 + int(float64(maxRows-2)*bell*(0.35+0.65*fold))
+			if ci%2 == 1 && fold < 0.35 {
+				continue // folds of the curtain leave gaps
 			}
-			shimmer := 0.62 + 0.38*(0.5+0.5*math.Sin(u*9.0-tt*1.25))
-			al := float32(math.Min(0.16, bell*0.115*edgeAlpha*boost*shimmer))
-			if al > 0.004 {
-				bx := startX + float32(u)*spanW - bandW*0.5
-				by := skyTop + waveY
-				bh := curtainH * hScale
-				p.FillGradient(ui.Rect{X: bx, Y: by, W: bandW, H: bh}, ui.LinearGradient{
-					Angle: 180,
-					Stops: []ui.GradientStop{
-						{Color: ui.Transparent, At: 0.0},
-						{Color: col.Alpha(al * 0.55), At: 0.28},
-						{Color: col.Alpha(al), At: 0.62},
-						{Color: ui.Transparent, At: 1.0},
-					},
-				}, 0)
+			col := auroraA.MixOklab(auroraB, float32(math.Min(1, u*1.6)))
+			if u > 0.6 {
+				col = auroraB.MixOklab(auroraC, float32((u-0.6)/0.4))
 			}
-
-			// Delicate drifting high-altitude starlight shimmer along the ribbon
-			if bi%5 == 2 {
-				sx := startX + float32(u)*spanW
-				sy := skyTop + waveY + curtainH*0.52 + float32(math.Sin(u*11.0+tt*1.3)*8.0)
-				sa := float32(math.Min(0.68, bell*0.58*edgeAlpha*boost))
-				ch := '·'
-				if (bi/5)%3 == 0 {
-					ch = '~'
-				} else if (bi/5)%4 == 1 {
-					ch = '✦'
+			x := startX + float32(ci)*adv
+			y0 := top + float32(math.Sin(u*5.0+tt*0.28))*lineH*0.9 + float32(1-bell)*lineH
+			for k := 0; k < rows; k++ {
+				f := float64(k) / float64(max(1, rows-1))
+				ch := '|'
+				if k == 0 {
+					ch = '\''
+				} else if f > 0.8 {
+					ch = ':'
 				}
-				if sa > 0.04 {
-					p.Glyphs(s.scene.shapeRune(ch), sx, sy+asc*0.5, col.Alpha(sa))
-				}
+				al := ea * boost * (0.25 + 0.75*bell) * shimmer * (0.50 + 0.50*math.Sin(math.Min(1, f*1.15)*math.Pi)) * 1.25
+				mark(ch, x, y0+float32(k)*lineH, col, al)
 			}
 		}
-		lastBounds = ui.Rect{
-			X: startX,
-			Y: skyTop - 10,
-			W: spanW,
-			H: curtainH + 20,
-		}
+		lastBounds = ui.Rect{X: startX, Y: top - lineH, W: span, H: float32(maxRows+2) * lineH}
 	}
+
+	// What stands in the water moves it: the sea lifts over a whale on the next frame.
+	s.scene.bumpU, s.scene.bumpAmt = bumpU, bumpAmt
 
 	// Store latest hit bounds on the live encounter so clicks trigger visual + audio reactions cleanly
 	if s.scene.active != nil && s.scene.active.kind == act.kind {
