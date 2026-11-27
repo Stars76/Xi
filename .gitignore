@@ -1,0 +1,8 @@
+release/
+build/
+.mygo/
+.tmp/
+_gotmp/
+_smoke*/
+*.exe
+*.test
