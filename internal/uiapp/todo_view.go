@@ -161,7 +161,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 			if isToday {
 				// 526Hz EDITORIAL TIDE-RIBBON CARD:
 				// Upper paper deck = pure razor-sharp typography, countdown & controls (zero glyphs behind text).
-				// Bottom 32px edge = restrained whisper-soft · ~ ∿ 526Hz acoustic tide ribbon.
+				// Bottom 32px edge = the tide ribbon, a miniature of the Focus Clock sea (~ ≈ ≋).
 				t := snap.Timer
 				prefs := snap.Prefs
 				ui.Column(c.Key("today-ocean-hero")).FillWidth().Height(116).Margin(0, 0, 14, 0).Radius(16).
@@ -241,7 +241,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 						})
 					})
 
-					// Bottom 32px whisper-soft 526Hz acoustic tide ribbon
+					// Bottom 32px tide ribbon: the same glyph sea in miniature
 					ribbon := ui.Box(c.Key("today-tide-ribbon")).FillWidth().Height(32).Cursor(ui.CursorPointer)
 					rpx, rpy, rpIn := ribbon.PointerPosition()
 					if ribbon.Clicked() {

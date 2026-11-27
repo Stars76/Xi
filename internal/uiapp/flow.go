@@ -347,8 +347,8 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 	})
 }
 
-// Minimal whisper-soft horizontal wave glyphs for the Today 526Hz tide ribbon (zero noisy/vertical symbols).
-var ribbonRunes = []string{"·", "~", "≈"}
+// The Today tide ribbon uses the same three glyphs as the sea, at a smaller size.
+var ribbonRunes = []string{"~", "≈", "≋"}
 
 func (s *SeaState) ensureRibbonGlyphs() {
 	if len(s.ribbonGlyphs) == len(ribbonRunes) {
@@ -371,8 +371,10 @@ func (s *SeaState) ensureRibbonGlyphs() {
 	}
 }
 
-// DrawTideRibbon renders a restrained, airy 526Hz acoustic tide ribbon along the bottom edge
-// of the Today header card: pure paper above, whisper-soft · ~ ∿ harmonic ripples below.
+// DrawTideRibbon draws the Today header's tide ribbon as a miniature of the Focus Clock sea:
+// the same three glyphs (~ ≈ ≋), filled continuously in three rows, the same wave and the same
+// slow drift between moods. Like the sea it is glyphs only — no tint, no glow, no strokes.
+// The water stands full while idle and drains with the round's remaining time.
 func (s *SeaState) DrawTideRibbon(c *ui.Context, box ui.Element, v SeaView) {
 	box.Draw(func(p *ui.Painter, r ui.Rect) {
 		w := float64(r.W)
@@ -385,20 +387,6 @@ func (s *SeaState) DrawTideRibbon(c *ui.Context, box ui.Element, v SeaView) {
 			now = time.Now()
 		}
 
-		// Soft vertical paper-to-shallow-water wash (melts seamlessly from the paper above)
-		tintBottom := ui.Hex("#EAF4FF").Alpha(0.76)
-		if v.Dark {
-			tintBottom = ui.Hex("#17283D").Alpha(0.86)
-		}
-		p.FillGradient(r, ui.LinearGradient{
-			Angle: 180,
-			Stops: []ui.GradientStop{
-				{Color: ui.Transparent, At: 0.0},
-				{Color: tintBottom.Alpha(0.32), At: 0.42},
-				{Color: tintBottom, At: 1.0},
-			},
-		}, 0)
-
 		s.mu.Lock()
 		s.ensureRibbonGlyphs()
 		glyphs := s.ribbonGlyphs
@@ -407,7 +395,7 @@ func (s *SeaState) DrawTideRibbon(c *ui.Context, box ui.Element, v SeaView) {
 		pulseAt := s.scene.taskPulseAt
 		s.mu.Unlock()
 
-		// Check active task-completion left-to-right luminous wave sweep
+		// Task-completion sweep: a swell that runs left to right once
 		pulseActive := false
 		pulseU := -1.0
 		pulseStrength := 0.0
@@ -423,13 +411,15 @@ func (s *SeaState) DrawTideRibbon(c *ui.Context, box ui.Element, v SeaView) {
 			}
 		}
 
-		// Motion pacing: calm quiet breathing when idle, smooth acoustic flow when running
+		// Motion pacing: slow breathing when idle, steady flow while a round runs, still when paused
 		staticMode := v.ReduceMotion || v.Motion == "off"
 		animate := !staticMode && (v.Running || pulseActive || v.PointerIn || !v.Paused)
 		tt := 1.4
+		mood := seaMoods[0]
 		if animate {
 			tSec := float64(p.Now().UnixNano()) / 1e9
-			speed := 0.24 // whisper-slow idle breathing
+			mood = seaMoodAt(tSec)
+			speed := 0.24
 			if v.Running {
 				speed = 0.85
 				if v.RemainSec > 0 && v.RemainSec <= 60 {
@@ -442,161 +432,92 @@ func (s *SeaState) DrawTideRibbon(c *ui.Context, box ui.Element, v SeaView) {
 				speed *= 0.5
 			}
 			if speed > 0 {
-				tt = tSec * speed
+				tt = math.Mod(tSec, 3600) * speed
 			}
 		}
 
-		// Optional soft luminous wave band during task-completion sweep
-		if pulseActive {
-			bandW := float32(math.Max(64, w*0.18))
-			cx := r.X + float32(pulseU*w)
-			glowCol := ui.Hex("#007CFF")
-			if v.Dark {
-				glowCol = ui.Hex("#66B5FF")
-			}
-			p.FillGradient(ui.Rect{X: cx - bandW/2, Y: r.Y + 2, W: bandW, H: r.H - 2}, ui.LinearGradient{
-				Angle: 90,
-				Stops: []ui.GradientStop{
-					{Color: ui.Transparent, At: 0.0},
-					{Color: glowCol.Alpha(float32(0.18 * pulseStrength)), At: 0.5},
-					{Color: ui.Transparent, At: 1.0},
-				},
-			}, 0)
-		}
-
-		// Restrained ocean-blue tones (zero dark ink / zero visual harshness)
-		var colMist, colMid, colCrest ui.Color
+		colors := seaLightColors
 		if v.Dark {
-			colMist = ui.Hex("#376FA8")
-			colMid = ui.Hex("#56A5F5")
-			colCrest = ui.Hex("#88C8FF")
-		} else {
-			colMist = ui.Hex("#89C6FF")
-			colMid = ui.Hex("#3696FF")
-			colCrest = ui.Hex("#007CFF")
+			colors = seaDarkColors
+			if v.HighContrast {
+				colors = seaDarkHCColors
+			}
+		} else if v.HighContrast {
+			colors = seaLightHCColors
 		}
 
-		elapsedRatio := 1.0 - math.Max(0, math.Min(1, v.RemainRatio))
+		// Water level: full while idle, draining with the remaining time of a round.
+		wl := 0.0
+		if v.Running || v.Paused {
+			wl = 1.0 - math.Max(0, math.Min(1, v.RemainRatio))
+		}
+
+		const rows = 3
+		const cellX = 11.0
+		rowH := h / rows
+		cols := int(math.Ceil(w/cellX)) + 1
 		pxLocal := float64(v.PointerX - r.X)
 
-		// 3 staggered horizontal strata inside the 32px ribbon (varied spacing eliminates vertical grid lines):
-		// Row 0 (mist crest), Row 1 (primary 526Hz acoustic wave), Row 2 (soft undertow)
-		type stratum struct {
-			yFrac     float64
-			cellX     float64
-			xShift    float64
-			freqA     float64
-			freqB     float64
-			phaseMul  float64
-			phaseOff  float64
-			yAmp      float64
-			baseAlpha float64
-			minThresh float64
-		}
-		strata := []stratum{
-			{yFrac: 0.25, cellX: 19.0, xShift: 7.0, freqA: 2.6, freqB: 5.4, phaseMul: 0.72, phaseOff: 0.8, yAmp: 1.5, baseAlpha: 0.17, minThresh: 0.44},
-			{yFrac: 0.56, cellX: 16.0, xShift: 0.0, freqA: 3.1, freqB: 6.4, phaseMul: 1.00, phaseOff: 0.0, yAmp: 2.3, baseAlpha: 0.31, minThresh: 0.08},
-			{yFrac: 0.85, cellX: 18.0, xShift: 11.0, freqA: 2.4, freqB: 4.9, phaseMul: -0.62, phaseOff: 2.1, yAmp: 1.3, baseAlpha: 0.22, minThresh: 0.20},
-		}
-
-		for si, st := range strata {
-			baseY := h * st.yFrac
-			cols := max(1, int(math.Floor((w-16)/st.cellX)))
-			startX := (w-float64(cols-1)*st.cellX)*0.5 + st.xShift*0.5
-			for col := 0; col < cols; col++ {
-				x := startX + float64(col)*st.cellX
-				if x < 8 || x > w-8 {
+		for row := 0; row < rows; row++ {
+			vv := (float64(row) + 0.5) / rows
+			baseY := (float64(row) + 0.5) * rowH
+			rowShift := math.Mod(float64(row)*0.37, 1.0) * cellX
+			for col := -1; col <= cols; col++ {
+				x := float64(col)*cellX + rowShift
+				if x < 4 || x > w-4 {
 					continue
 				}
 				u := x / w
 
-				// Silky horizontal fade at both left & right edges
+				// Soft fade into the card's rounded corners
 				edgeFade := 1.0
-				if u < 0.07 {
-					edgeFade = u / 0.07
-				} else if u > 0.93 {
-					edgeFade = (1.0 - u) / 0.07
+				if u < 0.05 {
+					edgeFade = u / 0.05
+				} else if u > 0.95 {
+					edgeFade = (1.0 - u) / 0.05
 				}
-				edgeFade = edgeFade * edgeFade * (3 - 2*edgeFade)
 
-				// Coherent dual-harmonic 526Hz acoustic sine wave
-				wA := math.Sin(u*st.freqA*math.Pi - tt*st.phaseMul + st.phaseOff)
-				wB := math.Sin(u*st.freqB*math.Pi + tt*st.phaseMul*0.58 + st.phaseOff*0.5)
-				amp := 0.5 + 0.32*wA + 0.18*wB // [0, 1]
+				// The ribbon is far wider than it is tall, so the wave repeats a few times across it.
+				waveSin := math.Sin(u*mood.K*2.4 + vv*1.5 - tt*1.3)
+				H := (vv-wl)*0.62 + 0.40 + 0.10*(mood.Amp/0.14)*waveSin
 
-				// Subtle pointer lift
-				hoverBoost := 0.0
+				// Pointer lift and completion sweep raise the water locally
 				if v.PointerIn {
-					dx := math.Abs(x - pxLocal)
-					if dx < 68 {
+					if dx := math.Abs(x - pxLocal); dx < 68 {
 						f := 1.0 - dx/68.0
-						hoverBoost = 0.28 * f * f
+						H += 0.16 * f * f
 					}
 				}
-
-				// Task-completion luminous wave sweep boost
-				sweepBoost := 0.0
+				sweep := 0.0
 				if pulseActive {
 					du := u - pulseU
-					g := math.Exp(-(du * du) / (2 * 0.085 * 0.085))
-					sweepBoost = g * pulseStrength * 0.65
+					sweep = math.Exp(-(du*du)/(2*0.085*0.085)) * pulseStrength
+					H += 0.22 * sweep
 				}
 
-				energy := math.Min(1.0, amp+hoverBoost+sweepBoost)
-				if energy < st.minThresh {
+				if H < seaSurfaceH {
 					continue
 				}
-
-				// Choose airy glyph by wave energy: · (trough) -> ~ (swell) -> ∿ (crest)
-				idx := 0
-				if energy >= 0.72 || (si == 1 && energy >= 0.64) {
-					idx = 2 // ∿
-				} else if energy >= 0.42 {
-					idx = 1 // ~
+				if H > 1 {
+					H = 1
 				}
-
-				// Color & alpha: whisper-calm in idle, gently enriched along focus elapsed progress
-				colTone := colMist
-				if idx == 1 {
-					colTone = colMid
-				} else if idx == 2 {
-					colTone = colCrest
-				}
-
-				alpha := st.baseAlpha * (0.55 + 0.85*energy)
-				if v.Running {
-					if u <= elapsedRatio+0.02 {
-						alpha *= 1.38
-						if idx == 0 {
-							colTone = colMid
-						}
-					} else {
-						alpha *= 0.88
-					}
-				}
-				if v.Dark {
-					alpha *= 1.18
-				}
+				depth := (H - seaSurfaceH) / (1 - seaSurfaceH)
+				idx := min(2, int(depth*3))
+				// One step lighter than the full sea: this is a quiet strip under a header, not a stage.
+				ci := min(len(colors)-2, 2+int(math.Round(depth*float64(len(colors)-4))))
+				alpha := (0.46 + 0.40*depth + 0.25*sweep) * edgeFade
 				if v.HighContrast {
-					alpha *= 1.25
+					alpha *= 1.2
 				}
-				alpha += sweepBoost * 0.42
-				alpha *= edgeFade
-				if alpha > 0.72 {
-					alpha = 0.72
+				if alpha > 1 {
+					alpha = 1
 				}
 				if alpha < 0.04 {
 					continue
 				}
-
-				// Smooth harmonic vertical undulation (eliminates boxy terminal-grid stiffness)
-				yOff := (amp - 0.5) * 2.0 * st.yAmp
-				if sweepBoost > 0.02 {
-					yOff -= sweepBoost * 2.2
-				}
 				gx := r.X + float32(x) - advances[idx]/2
-				gy := r.Y + float32(baseY+yOff) + ascents[idx]*0.36
-				p.Glyphs(glyphs[idx], gx, gy, colTone.Alpha(float32(alpha)))
+				gy := r.Y + float32(baseY+waveSin*1.4-sweep*1.8) + ascents[idx]*0.36
+				p.Glyphs(glyphs[idx], gx, gy, colors[ci].Alpha(float32(alpha)))
 			}
 		}
 
