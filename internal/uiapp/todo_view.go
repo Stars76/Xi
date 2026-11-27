@@ -219,7 +219,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 							} else if t.Paused {
 								ppLbl = "继续专注"
 							}
-							ppBtn := sheenPrimaryBtn(c, ppLbl, 32, p).Padding(0, 14).Radius(9)
+							ppBtn := primaryBtn(c, ppLbl, 14.5, p)
 							ppBtn.Tooltip("空格")
 							if ppBtn.Clicked() {
 								// Asks which task the round is for when nothing is bound, so history is not filled with unbound records.
@@ -330,7 +330,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 						a.focusNewTask = false
 						in.Focus()
 					}
-					addBtn := sheenPrimaryBtn(c, "添加", 44, p)
+					addBtn := primaryBtn(c, "添加", 14.5, p).Height(44).Padding(0, 18).Radius(10)
 					if in.Submitted() || addBtn.Clicked() {
 						if a.addTaskSmart(c, a.newTaskDraft) {
 							a.newTaskDraft = ""
@@ -635,7 +635,7 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 			// Title or inline edit
 			if a.editingTaskID == task.ID {
 				ed := ui.TextInput(c.Key("edit-task-"+task.ID), &a.editingTaskVal).FontSize(16).AutoFocus().Grow(1).Label("修改任务标题")
-				saveEd := ui.PrimaryButton(c, "保存").Padding(5, 12).FontSize(12.5)
+				saveEd := primaryBtn(c, "保存", 12.5, p).Padding(5, 12)
 				cancelEd := ui.Button(c, "取消").Padding(5, 12).FontSize(12.5)
 				if ed.Submitted() || saveEd.Clicked() {
 					a.Todo.SetTaskTitle(task.ID, a.editingTaskVal)
@@ -779,7 +779,7 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 				Border(1, p.AccentVeil).Shadow(0, 2, 8, 0, p.CardShadow).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "闹钟时刻").FontSize(12).TextColor(p.Ink2).SingleLine()
 				alIn := ui.TextInput(c.Key("al-in-"+task.ID), &a.alarmInputStr).Font(FontMono).Width(92).Placeholder("09:30").AutoFocus().Label("闹钟时间")
-				saveB := ui.PrimaryButton(c, "保存").Padding(4, 10).FontSize(12)
+				saveB := primaryBtn(c, "保存", 12, p).Padding(4, 10)
 				if alIn.Submitted() || saveB.Clicked() {
 					v := strings.TrimSpace(a.alarmInputStr)
 					if v != "" && !a.Todo.SetTaskAlarm(task.ID, v) {
@@ -820,7 +820,7 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 						}
 						if a.editingSubKey == subKey {
 							sin := ui.TextInput(c.Key("sed-"+sub.ID), &a.editingSubVal).FontSize(14).AutoFocus().Grow(1).Label("修改步骤")
-							okb := ui.PrimaryButton(c, "保存").Padding(3, 9).FontSize(12)
+							okb := primaryBtn(c, "保存", 12, p).Padding(3, 9)
 							canb := ui.Button(c, "取消").Padding(3, 9).FontSize(12)
 							if sin.Submitted() || okb.Clicked() {
 								a.Todo.SetSubTitle(task.ID, sub.ID, a.editingSubVal)
@@ -857,7 +857,7 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 				if a.subAddTaskID == task.ID {
 					ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 						sin := ui.TextInput(c.Key("sub-add-"+task.ID), &a.subAddDraft).FontSize(13.5).Placeholder("输入小步骤，回车添加").AutoFocus().Grow(1).Label("新小步骤")
-						addB := ui.PrimaryButton(c, "添加").Padding(4, 12).FontSize(12)
+						addB := primaryBtn(c, "添加", 12, p).Padding(4, 12)
 						canB := ui.Button(c, "取消").Padding(4, 12).FontSize(12)
 						if sin.Submitted() || addB.Clicked() {
 							if a.Todo.AddSubtask(task.ID, a.subAddDraft) != nil {
@@ -904,9 +904,13 @@ func (a *App) renderCalendarOverlay(c *ui.Context, p Palette) {
 		}
 	}
 
-	ui.Column(c).Fill().Center().Padding(24).Gap(16).Background(p.Surface).Children(func() {
-		ui.Column(c.Key("cal-card")).Width(580).MaxWidthPercent(94).Radius(18).
-			Background(p.Paper).Border(1, p.Line).Shadow(0, 10, 30, 0, p.CardShadow).
+	ui.Column(c).Fill().AlignItems(ui.Center).Background(p.Paper).Children(func() {
+	ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(PagePadTop, PagePadX, 18, PagePadX).Gap(14).Children(func() {
+		ui.Row(c).FillWidth().Height(40).AlignItems(ui.Center).Gap(10).Children(func() {
+			pageTitle(c, "日", "历", p)
+			ui.Text(c, "点选某一天，查看或安排那天的事").FontSize(12.5).TextColor(p.Ink4).Padding(6, 0, 0, 2)
+		})
+		cardLook(ui.Column(c.Key("cal-card")).FillWidth(), p).
 			Transition(calCardMotion).Clip().Children(func() {
 			// Clean Paper & Ocean-Blue Calendar Header
 			ui.Row(c).FillWidth().Height(64).Padding(0, 22).AlignItems(ui.Center).
@@ -1016,9 +1020,6 @@ func (a *App) renderCalendarOverlay(c *ui.Context, p Palette) {
 			})
 		})
 
-		backBtn := ui.Button(c, "返回任务").Height(38).Padding(0, 22).Radius(10)
-		if backBtn.Clicked() {
-			a.activeOverlay = ""
-		}
+	})
 	})
 }

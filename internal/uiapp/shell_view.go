@@ -65,22 +65,6 @@ func iconBtn(c *ui.Context, icon *ui.SVG, label, tip string, p Palette) ui.Eleme
 	return b
 }
 
-// sheenPrimaryBtn renders a tactile same-hue vertical-gradient primary button (#007CFF -> #0066D6) with soft blue glow.
-func sheenPrimaryBtn(c *ui.Context, label string, h float32, p Palette) ui.Element {
-	b := ui.ButtonBase(c).Height(h).Padding(0, 18).Radius(10).Center().
-		LinearGradient(ui.LinearGradient{From: p.Blue, To: p.BlueDeep, Angle: 180, Oklab: true}).
-		Shadow(0, 3, 10, 0, p.BtnGlow).
-		Transition(cardFadeFast).Cursor(ui.CursorPointer).Label(label)
-	if b.Hovered() {
-		b.LinearGradient(ui.LinearGradient{From: p.Blue2, To: p.Blue, Angle: 180, Oklab: true}).
-			Shadow(0, 5, 14, 0, p.BtnGlow)
-	}
-	b.Children(func() {
-		ui.Text(c, label).FontSize(14.5).FontWeight(700).TextColor(ui.Hex("#FFFFFF")).SingleLine()
-	})
-	return b
-}
-
 func badgeChip(c *ui.Context, text string, bg, fg, border ui.Color) ui.Element {
 	el := ui.Row(c).Height(20).Padding(0, 8).Radius(999).Background(bg).AlignItems(ui.Center)
 	if border != ui.Transparent {

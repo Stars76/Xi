@@ -77,13 +77,10 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 		})
 
 		// Layer 2: Foreground immersive stage
-		ui.Column(c).Absolute().Top(0).Right(0).Bottom(0).Left(0).ZIndex(2).Padding(20, 32, 22, 32).Children(func() {
+		ui.Column(c).Absolute().Top(0).Right(0).Bottom(0).Left(0).ZIndex(2).Padding(PagePadTop, PagePadX, 22, PagePadX).Children(func() {
 			// Focus Clock top header
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-				ui.RichText(c,
-					ui.Span{Text: "专注", Weight: 800, Size: 24, Color: p.Ink},
-					ui.Span{Text: "钟", Weight: 800, Size: 24, Color: p.Blue},
-				).LetterSpacing(-0.4)
+				pageTitle(c, "专注", "钟", p)
 
 				// Status pill
 				dotCol := p.IdleDot
@@ -192,7 +189,7 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 						a.timerShowSet = false
 					}
 
-					mainBtn := sheenPrimaryBtn(c, primaryLabel, 40, p).Padding(0, 24).Radius(11).Tooltip("空格")
+					mainBtn := primaryBtn(c, primaryLabel, 14.5, p).Height(40).Padding(0, 24).Radius(11).Tooltip("空格")
 					if mainBtn.Clicked() {
 						a.timerShowSetup = false
 						a.timerShowSet = false

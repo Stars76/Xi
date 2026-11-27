@@ -48,10 +48,10 @@ func TestMainViewTodoAndPanels(t *testing.T) {
 	if err := tt.Click("日历"); err != nil {
 		t.Fatal(err)
 	}
-	if !tt.HasText("返回任务") {
-		t.Fatal("expected calendar overlay with 返回任务")
+	if !tt.HasText("点选某一天") {
+		t.Fatal("expected calendar page")
 	}
-	if err := tt.Click("返回任务"); err != nil {
+	if err := tt.Click("今日事"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -59,7 +59,7 @@ func TestMainViewTodoAndPanels(t *testing.T) {
 	if err := tt.Click("统计"); err != nil {
 		t.Fatal(err)
 	}
-	if !tt.HasText("专注统计") {
+	if !tt.HasText("统计范围") && !tt.HasText("每日") {
 		t.Fatal("expected stats panel")
 	}
 	if err := tt.Click("每日"); err != nil {
@@ -68,7 +68,7 @@ func TestMainViewTodoAndPanels(t *testing.T) {
 	if !tt.HasText("+ 补录时段") {
 		t.Fatal("expected day timeline toolbar")
 	}
-	if err := tt.Click("返回统计"); err != nil {
+	if err := tt.Click("今日事"); err != nil {
 		t.Fatal(err)
 	}
 

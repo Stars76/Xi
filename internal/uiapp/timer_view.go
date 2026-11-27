@@ -482,7 +482,7 @@ func (a *App) renderTimerSetupOverlay(c *ui.Context, snap timer.Snapshot, p Pale
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, "自定义").FontSize(12).TextColor(p.Ink2)
 					in := ui.TextInput(c.Key("custom-min-in"), &a.timerCustomMin).Font(FontMono).Width(74).Placeholder("1-180").Label("自定义分钟")
-					appB := ui.PrimaryButton(c, "应用").Padding(5, 12).FontSize(12)
+					appB := primaryBtn(c, "应用", 12, p).Padding(5, 12)
 					if in.Submitted() || appB.Clicked() {
 						m, err := strconv.Atoi(a.timerCustomMin)
 						if err != nil || m < 1 || m > 180 {
@@ -734,7 +734,7 @@ func (a *App) renderTimerDoneBody(c *ui.Context, p Palette, closeLabel string) {
 	}
 
 	ui.Column(c).FillWidth().Gap(6).Children(func() {
-		again := ui.PrimaryButton(c, "再来一轮").FillWidth().Height(34).Radius(999)
+		again := primaryBtn(c, "再来一轮", 13, p).FillWidth().Height(34).Radius(999)
 		if again.Clicked() {
 			a.timerDoneVisible = false
 			a.Timer.Command("setPhase", timer.CmdPayload{Phase: "focus"})

@@ -12,13 +12,10 @@ import (
 
 func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette) {
 	ui.Column(c).Fill().AlignItems(ui.Center).Background(p.Paper).Children(func() {
-		ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(24, 32, 18, 32).Gap(14).Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
-				back := iconBtn(c, IconLeft, "返回设置", "返回", p)
-				if back.Clicked() {
-					a.activeOverlay = ""
-				}
-				ui.Text(c, "设置与备份").FontSize(24).FontWeight(700).TextColor(p.Navy)
+		ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(PagePadTop, PagePadX, 18, PagePadX).Gap(14).Children(func() {
+			ui.Row(c).FillWidth().Height(40).AlignItems(ui.Center).Gap(10).Children(func() {
+				pageTitle(c, "设", "置", p)
+				ui.Text(c, "与备份").FontSize(12.5).TextColor(p.Ink4).Padding(6, 0, 0, 2)
 			})
 
 			ui.Scroll(c.Key("settings-scroll")).TrackScroll(&a.settingsScrl).Grow(1).MinHeight(0).Padding(4, 6).Gap(18).Children(func() {
@@ -114,7 +111,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 					drow.Children(func() {
 						if a.editingDid == dt.ID {
 							in := ui.TextInput(c.Key("dted-"+dt.ID), &a.editingDVal).AutoFocus().Grow(1).Label("编辑每日任务")
-							okb := ui.PrimaryButton(c, "保存").Padding(4, 10).FontSize(12)
+							okb := primaryBtn(c, "保存", 12, p).Padding(4, 10)
 							canb := ui.Button(c, "取消").Padding(4, 10).FontSize(12)
 							if in.Submitted() || okb.Clicked() {
 								a.Todo.RenameDaily(dt.ID, a.editingDVal)
@@ -141,7 +138,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 
 				ui.Row(c).FillWidth().Margin(6, 0, 0, 0).Gap(8).Children(func() {
 					di := ui.TextInput(c.Key("daily-new-in"), &a.newDailyDraft).Height(40).FontSize(14).Placeholder("例如：睡前读十分钟书").Grow(1).Label("新每日任务")
-					db := ui.PrimaryButton(c, "添加").Height(40).Padding(0, 16)
+					db := primaryBtn(c, "添加", 13, p).Height(40).Padding(0, 16)
 					if di.Submitted() || db.Clicked() {
 						if a.Todo.AddDaily(a.newDailyDraft) != nil {
 							a.newDailyDraft = ""
@@ -162,7 +159,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 
 				ui.TextArea(c.Key("tpl-ed-"+curKind), &a.tplDraft[a.tplTab]).Font(FontMono).FontSize(12).Height(150).Label("模板内容")
 				ui.Row(c).Gap(8).Children(func() {
-					saveTpl := ui.PrimaryButton(c, "保存模板").Padding(5, 12).FontSize(12)
+					saveTpl := primaryBtn(c, "保存模板", 12, p).Padding(5, 12)
 					if saveTpl.Clicked() {
 						var cur store.ExportTemplate
 						_ = a.Store.GetJSON(store.KeyExportTemplate, &cur)
@@ -226,7 +223,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 				ui.Text(c, "数据备份").FontSize(14).FontWeight(600).TextColor(p.Navy)
 				ui.Text(c, "数据完全保存在本地磁盘，零网络上传。导入前会自动生成一份备份。").FontSize(12).TextColor(p.Ink3)
 				ui.Row(c).Gap(8).Wrap().Children(func() {
-					expB := ui.PrimaryButton(c, "导出 JSON 备份").Padding(6, 12).FontSize(12.5)
+					expB := primaryBtn(c, "导出 JSON 备份", 12.5, p).Padding(6, 12)
 					if expB.Clicked() {
 						a.LaunchExportDialog()
 					}
@@ -283,7 +280,7 @@ func (a *App) renderImportModal(c *ui.Context, p Palette) {
 				if rep.Clicked() {
 					a.applyImportMode(c, "replace")
 				}
-				mrg := ui.PrimaryButton(c, "合并导入")
+				mrg := primaryBtn(c, "合并导入", 13, p)
 				if mrg.Clicked() {
 					a.applyImportMode(c, "merge")
 				}

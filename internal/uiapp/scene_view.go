@@ -167,7 +167,7 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 								if syncBusy {
 									btnLbl = "同步中…"
 								}
-								syncB := ui.PrimaryButton(c, btnLbl).Height(30).Padding(0, 12).FontSize(12).Disabled(syncBusy)
+								syncB := primaryBtn(c, btnLbl, 12, p).Height(30).Padding(0, 12).Disabled(syncBusy)
 								if in.Submitted() || syncB.Clicked() {
 									a.syncLiveWeatherAsync(a.sceneCityDraft, true)
 								}
@@ -340,7 +340,7 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 					a.sceneModalOpen = false
 				}
 				ui.Spacer(c)
-				doneBtn := ui.PrimaryButton(c, "完成").Height(32).Padding(0, 18).Radius(9).FontSize(12)
+				doneBtn := primaryBtn(c, "完成", 12, p).Height(32).Padding(0, 18).Radius(9)
 				if doneBtn.Clicked() {
 					a.sceneModalOpen = false
 				}
