@@ -145,16 +145,20 @@ func (a *App) renderStatsPanel(c *ui.Context, p Palette) {
 	}
 
 	ui.Column(c).Fill().AlignItems(ui.Center).Background(p.Paper).Children(func() {
-		ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(PagePadTop, PagePadX, 18, PagePadX).Gap(14).Children(func() {
-			// Page header: same title treatment as Today
-			ui.Row(c).FillWidth().Height(40).AlignItems(ui.Center).Gap(10).Children(func() {
-				plainTitle(c, "专注统计", p)
+		ui.Column(c).FillWidth().MaxWidth(980).Grow(1).MinHeight(0).Padding(24, 32, 18, 32).Gap(14).Children(func() {
+			// Top header (mirrors .stats-panel .settings-head)
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
+				back := iconBtn(c, IconLeft, "返回统计", "返回", p)
+				if back.Clicked() {
+					a.activeOverlay = ""
+				}
+				ui.Text(c, "专注统计").FontSize(24).FontWeight(700).TextColor(p.Navy)
 				if rangeSum != nil {
 					ui.Textf(c, "%s 至 %s", rangeSum.Since, rangeSum.Until).
-						FontSize(13).FontFeatures("tnum").TextColor(p.Ink4).Padding(6, 0, 0, 2)
+						FontSize(12.5).FontFeatures("tnum").TextColor(p.Ink4).Padding(6, 0, 0, 2)
 				} else if yearSum != nil {
 					ui.Textf(c, "过去 52 周 · %s 至 %s", yearSum.Since, yearSum.Until).
-						FontSize(13).FontFeatures("tnum").TextColor(p.Ink4).Padding(6, 0, 0, 2)
+						FontSize(12.5).FontFeatures("tnum").TextColor(p.Ink4).Padding(6, 0, 0, 2)
 				}
 				ui.Spacer(c)
 				ui.Segmented(c, &a.statsTab, "每日", "本周", "本月", "年度").Label("统计范围")
@@ -219,7 +223,7 @@ func (a *App) renderDayTimelineTab(c *ui.Context, p Palette) {
 	ui.Column(c).Grow(1).MinHeight(0).Gap(12).Children(func() {
 		// Timeline card (mirrors .tl-card)
 		ui.Column(c).Grow(1).MinHeight(240).Padding(12, 16, 16, 16).Radius(16).
-			Background(p.Paper).Border(1, p.Line).Shadow(0, 4, 18, 0, p.CardShadow).Gap(10).Children(func() {
+			Background(p.Paper).Border(1, p.Line).Shadow(0, 8, 24, -10, ui.RGBA(0, 46, 88, 0.14)).Gap(10).Children(func() {
 			// Day navigation bar
 			ui.Row(c).FillWidth().Padding(0, 0, 10, 0).BorderWidth(0, 0, 1, 0).BorderColor(p.Line).
 				Gap(8).AlignItems(ui.Center).Children(func() {
@@ -279,7 +283,7 @@ func (a *App) renderDayTimelineTab(c *ui.Context, p Palette) {
 							tickCol = p.Ink2
 						}
 						pt.Line(axisX, y, r.X+r.W-12, y, 1, col)
-						pt.Text(r.X+12, y-5, fmt.Sprintf("%02d:00", h), 11, tickCol)
+						pt.Text(r.X+12, y-5, fmt.Sprintf("%02d:00", h), 10.5, tickCol)
 					}
 					if a.tlDayKey == today {
 						now := a.now().Local()
@@ -349,13 +353,13 @@ func (a *App) renderDayTimelineTab(c *ui.Context, p Palette) {
 											// Tall multi-column block: stack time + title cleanly on 2 lines
 											ui.Column(c).Fill().Justify(ui.Center).Gap(1).Children(func() {
 												ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-													ui.Text(c, stats.ToHhmm(bCopy.StartMin)).Font(FontMono).FontSize(11).FontWeight(600).TextColor(timeCol).SingleLine()
+													ui.Text(c, stats.ToHhmm(bCopy.StartMin)).Font(FontMono).FontSize(10.5).FontWeight(600).TextColor(timeCol).SingleLine()
 													ui.Spacer(c)
 													if cols == 2 {
-														ui.Text(c, durLabel).FontSize(11).FontFeatures("tnum").TextColor(p.Ink3).SingleLine()
+														ui.Text(c, durLabel).FontSize(10).FontFeatures("tnum").TextColor(p.Ink3).SingleLine()
 													}
 												})
-												ui.Text(c, bCopy.Title).FontSize(12).FontWeight(600).TextColor(ink).SingleLine()
+												ui.Text(c, bCopy.Title).FontSize(11.5).FontWeight(600).TextColor(ink).SingleLine()
 											})
 										} else if cols >= 3 {
 											// Very narrow compact block: title + start time only
@@ -365,8 +369,8 @@ func (a *App) renderDayTimelineTab(c *ui.Context, p Palette) {
 										} else if cols == 2 {
 											// Medium 2-column block: start time + title
 											ui.Row(c).Fill().Gap(6).AlignItems(ui.Center).Children(func() {
-												ui.Text(c, stats.ToHhmm(bCopy.StartMin)).Font(FontMono).FontSize(11).FontWeight(600).TextColor(timeCol).SingleLine()
-												ui.Text(c, bCopy.Title).FontSize(12).FontWeight(600).TextColor(ink).Grow(1).SingleLine()
+												ui.Text(c, stats.ToHhmm(bCopy.StartMin)).Font(FontMono).FontSize(10.5).FontWeight(600).TextColor(timeCol).SingleLine()
+												ui.Text(c, bCopy.Title).FontSize(11.5).FontWeight(600).TextColor(ink).Grow(1).SingleLine()
 											})
 										} else {
 											// Full-width single-column block: time range + title + duration
@@ -436,7 +440,7 @@ func (a *App) renderDayTimelineTab(c *ui.Context, p Palette) {
 			if sel != nil {
 				ui.Row(c).Padding(8, 12).Radius(10).Background(p.Surface).Border(1, p.Line).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Textf(c, "已选：%s (%s–%s)", sel.Title, stats.ToHhmm(sel.StartMin), stats.ToHhmm(sel.EndMin)).
-						FontSize(13).FontWeight(600).TextColor(p.Navy).Grow(1).SingleLine()
+						FontSize(12.5).FontWeight(600).TextColor(p.Navy).Grow(1).SingleLine()
 					if sel.Result != "manual" {
 						edB := ui.Button(c, "改起止").Padding(4, 10).FontSize(12)
 						if edB.Clicked() {
@@ -513,13 +517,13 @@ func (a *App) renderDayTimelineTab(c *ui.Context, p Palette) {
 				if a.tlFormMode == "add" {
 					ui.TextInput(c.Key("tl-title"), &a.tlFormTitle).Placeholder("做了什么（必填）").Grow(1).Label("时段名称")
 				} else {
-					ui.Text(c, "调整时段："+a.tlFormTitle).FontSize(13).FontWeight(600).TextColor(p.Navy).Grow(1).SingleLine()
+					ui.Text(c, "调整时段："+a.tlFormTitle).FontSize(12.5).FontWeight(600).TextColor(p.Navy).Grow(1).SingleLine()
 				}
 				ui.TextInput(c.Key("tl-st"), &a.tlFormStart).Font(FontMono).Width(74).Placeholder("09:00").Label("开始时间")
 				ui.Text(c, "–").TextColor(p.Ink3)
 				ui.TextInput(c.Key("tl-en"), &a.tlFormEnd).Font(FontMono).Width(74).Placeholder("10:00").Label("结束时间")
-				saveB := primaryBtn(c, "保存", 12.5, p).Padding(5, 14)
-				canB := ui.Button(c, "取消").Padding(5, 14).FontSize(13)
+				saveB := ui.PrimaryButton(c, "保存").Padding(5, 14).FontSize(12.5)
+				canB := ui.Button(c, "取消").Padding(5, 14).FontSize(12.5)
 				if saveB.Clicked() {
 					stNorm, ok1 := dateutil.NormalizeAlarm(a.tlFormStart)
 					enNorm, ok2 := dateutil.NormalizeAlarm(a.tlFormEnd)
@@ -571,7 +575,7 @@ func (a *App) renderDayTimelineTab(c *ui.Context, p Palette) {
 		// Bottom action bar (mirrors .tl-actions)
 		ui.Row(c).FillWidth().Padding(12, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(p.Line).
 			Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
-			addB := primaryBtn(c, "+ 补录时段", 12.5, p).Height(34).Padding(0, 14).Radius(9).
+			addB := ui.PrimaryButton(c, "+ 补录时段").Height(34).Padding(0, 14).Radius(9).FontSize(12.5).
 				Shadow(0, 4, 12, 0, p.Blue.Alpha(0.22))
 			if addB.Clicked() {
 				a.tlFormOpen = true
@@ -654,7 +658,7 @@ func (a *App) renderRangeStatsTab(c *ui.Context, sum stats.PeriodSummary, p Pale
 		ui.Grid(c).Columns(4).Gap(12).FillWidth().Children(func() {
 			hero := ui.Box(c).Radius(14).Height(92).
 				LinearGradient(ui.LinearGradient{From: p.Paper, To: p.StatHeroB, Angle: 165, Oklab: true}).
-				Border(1, p.AccentVeil).Shadow(0, 4, 18, 0, p.CardShadow).Clip()
+				Border(1, p.AccentVeil).Shadow(0, 4, 16, 0, p.CardShadow).Clip()
 			hero.Children(func() {
 				ribbonBox := ui.Box(c).Absolute().Bottom(0).Left(3).Right(0).Height(26).ZIndex(0).PassThrough()
 				a.miniSea.DrawTideRibbon(c, ribbonBox, SeaView{
@@ -683,7 +687,7 @@ func (a *App) renderRangeStatsTab(c *ui.Context, sum stats.PeriodSummary, p Pale
 				{sum.Streak, "连续天数"},
 			} {
 				card := ui.Row(c).Radius(14).Background(p.Paper).Border(1, p.Line).
-					Shadow(0, 4, 18, 0, p.CardShadow).Clip()
+					Shadow(0, 6, 18, 0, p.CardShadow).Clip()
 				card.Children(func() {
 					ui.Box(c).Width(3).FillHeight().Background(p.AccentVeil)
 					ui.Column(c).Padding(16, 16).Gap(6).Children(func() {
@@ -701,12 +705,14 @@ func (a *App) renderRangeStatsTab(c *ui.Context, sum stats.PeriodSummary, p Pale
 			ui.Box(c).Grow(1).Height(1).Background(p.Line)
 			if sum.Peak > 0 && sum.PeakIndex >= 0 {
 				ui.Textf(c, "峰值 %02d–%02d 点 · %d 分钟", sum.PeakIndex*2, sum.PeakIndex*2+2, sum.Peak).
-					Font(FontMono).FontSize(12).FontWeight(600).TextColor(p.Ink3).SingleLine()
+					Font(FontMono).FontSize(11.5).FontWeight(600).TextColor(p.Ink3).SingleLine()
 			}
 		})
 
 		// 12-bin chart card (mirrors .hours with smooth animated bars & centered labels)
-		chartCard := cardLook(ui.Column(c.Key("stats-hours-card")).FillWidth().Padding(20, 14, 16, 14), p)
+		chartCard := ui.Column(c.Key("stats-hours-card")).FillWidth().Padding(20, 14, 16, 14).Radius(14).
+			LinearGradient(ui.LinearGradient{From: p.ChartBgA, To: p.ChartBgB, Angle: 180}).
+			Border(1, p.Line).Shadow(0, 6, 18, 0, ui.RGBA(0, 46, 88, 0.04))
 
 		// Animate normalized bar heights (0..1) so switching week/month glides smoothly
 		maxVal := max(1, sum.Peak)
@@ -726,22 +732,28 @@ func (a *App) renderRangeStatsTab(c *ui.Context, sum stats.PeriodSummary, p Pale
 				chartH := r.H - topPad - botPad
 				baseY := r.Y + topPad + chartH
 
-				// Each bar is a column of water built from the sea's glyphs; one hairline is the seabed.
-				pt.Line(r.X, baseY+1, r.X+r.W, baseY+1, 1, p.LineSoft)
+				// Subtle horizontal 25% grid lines
+				for g := 0; g <= 4; g++ {
+					y := r.Y + topPad + chartH*float32(g)/4.0
+					pt.Line(r.X, y, r.X+r.W, y, 1, p.ChartGrid)
+				}
 				slotW := r.W / 12.0
-				barW := min(46, slotW*0.78)
+				barW := min(34, slotW*0.58)
 				for i := 0; i < 12; i++ {
 					cx := r.X + slotW*float32(i) + (slotW-barW)/2
+					// Slot backing rail
+					pt.Fill(ui.Rect{X: cx, Y: r.Y + topPad, W: barW, H: chartH}, p.ChartSlot, 6)
 					val := sum.Bins[i]
 					frac := animFrac[i]
 					if frac > 0.005 {
-						bh := max(10, chartH*frac)
+						bh := max(6, chartH*frac)
 						by := baseY - bh
-						a.miniSea.DrawWaterColumn(pt, ui.Rect{X: cx, Y: by, W: barW, H: bh}, chartH, p.Dark)
+						pt.FillGradient(ui.Rect{X: cx, Y: by, W: barW, H: bh},
+							ui.LinearGradient{From: p.Blue2, To: p.Blue, Angle: 180}, 6)
 						if val > 0 {
 							lbl := fmt.Sprint(val)
-							lw, _ := pt.MeasureText(80, ui.Span{Text: lbl, Size: 11, Weight: 600})
-							pt.Text(cx+(barW-lw)/2, by-16, lbl, 11, p.BlueDeep)
+							lw, _ := pt.MeasureText(80, ui.Span{Text: lbl, Size: 10.5, Weight: 600})
+							pt.Text(cx+(barW-lw)/2, by-16, lbl, 10.5, p.BlueDeep)
 						}
 					}
 					hr := fmt.Sprintf("%02d", i*2)
@@ -785,7 +797,7 @@ func (a *App) renderRangeStatsTab(c *ui.Context, sum stats.PeriodSummary, p Pale
 					clrAll.Border(1, p.Danger)
 				}
 				clrAll.Children(func() {
-					ui.Textf(c, "清空未定 (%d)", unboundCount).FontSize(12).FontWeight(600).TextColor(p.Danger).SingleLine()
+					ui.Textf(c, "清空未定 (%d)", unboundCount).FontSize(11.5).FontWeight(600).TextColor(p.Danger).SingleLine()
 				})
 				if clrAll.Clicked() {
 					a.deleteFocusHistory(c, unboundIndices, "范围内全部未定任务")
@@ -804,7 +816,7 @@ func (a *App) renderRangeStatsTab(c *ui.Context, sum stats.PeriodSummary, p Pale
 				if a.statsOnlyUnbound {
 					col = p.BlueDeep
 				}
-				ui.Text(c, ubLabel).FontSize(12).FontWeight(600).TextColor(col).SingleLine()
+				ui.Text(c, ubLabel).FontSize(11.5).FontWeight(600).TextColor(col).SingleLine()
 			})
 			if ubBtn.Clicked() {
 				a.statsOnlyUnbound = !a.statsOnlyUnbound
@@ -819,14 +831,14 @@ func (a *App) renderRangeStatsTab(c *ui.Context, sum stats.PeriodSummary, p Pale
 		}
 
 		ui.Column(c).FillWidth().Padding(8, 12).Radius(14).Background(p.Paper).Border(1, p.Line).
-			Shadow(0, 4, 18, 0, p.CardShadow).Gap(2).Children(func() {
+			Shadow(0, 4, 14, 0, p.CardShadow).Gap(2).Children(func() {
 			if len(matched) == 0 {
 				ui.Row(c).FillWidth().Padding(18, 10).Center().Children(func() {
 					msg := "该时间范围内暂无专注记录"
 					if a.statsOnlyUnbound {
 						msg = "该时间范围内没有未定任务的专注记录"
 					}
-					ui.Text(c, msg).FontSize(13).TextColor(p.Ink4)
+					ui.Text(c, msg).FontSize(12.5).TextColor(p.Ink4)
 				})
 			}
 			for _, it := range displayList {
@@ -852,7 +864,7 @@ func (a *App) renderRangeStatsTab(c *ui.Context, sum stats.PeriodSummary, p Pale
 					row.Background(p.AccentSoft)
 				}
 				row.Children(func() {
-					ui.Text(c, timeTag).Font(FontMono).FontSize(12).TextColor(p.Ink3).Width(116).SingleLine()
+					ui.Text(c, timeTag).Font(FontMono).FontSize(11.5).TextColor(p.Ink3).Width(116).SingleLine()
 					ui.Text(c, title).FontSize(13).FontWeight(600).TextColor(p.Ink).Grow(1).SingleLine()
 					if h.TaskID == "" {
 						badgeChip(c, "未定任务", p.Surface, p.Ink3, p.LineSoft)
@@ -862,9 +874,18 @@ func (a *App) renderRangeStatsTab(c *ui.Context, sum stats.PeriodSummary, p Pale
 					} else {
 						badgeChip(c, fmt.Sprintf("%d 分钟", h.PlannedMinutes), p.AccentSoft, p.BlueDeep, ui.Transparent)
 					}
-					// Same quiet delete as a task row on Today: an icon that only tints on hover.
-					delB := iconBtn(c.Key(fmt.Sprintf("hist-del-%d", origIdx)), IconDelete,
-						fmt.Sprintf("删除专注 %s %d", title, origIdx), "删除此条专注记录（可撤销）", p).Size(28, 28)
+					delB := ui.ButtonBase(c.Key(fmt.Sprintf("hist-del-%d", origIdx))).Height(26).Padding(0, 9).Radius(7).
+						Background(p.DangerSoft).Border(1, p.DangerLine).Transition(colorFadeFast).
+						Cursor(ui.CursorPointer).Label(fmt.Sprintf("删除专注 %s %d", title, origIdx)).Tooltip("删除此条专注记录（可撤销）")
+					if delB.Hovered() {
+						delB.Border(1, p.Danger)
+					}
+					delB.Children(func() {
+						ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+							ui.Icon(c, IconDelete).Size(12, 12).TextColor(p.Danger)
+							ui.Text(c, "删除").FontSize(11.5).FontWeight(600).TextColor(p.Danger).SingleLine()
+						})
+					})
 					if delB.Clicked() {
 						a.deleteFocusHistory(c, []int{origIdx}, title)
 					}
@@ -894,7 +915,7 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 		ui.Grid(c).Columns(4).Gap(12).FillWidth().Children(func() {
 			hero := ui.Box(c).Radius(14).Height(92).
 				LinearGradient(ui.LinearGradient{From: p.Paper, To: p.StatHeroB, Angle: 165, Oklab: true}).
-				Border(1, p.AccentVeil).Shadow(0, 4, 18, 0, p.CardShadow).Clip()
+				Border(1, p.AccentVeil).Shadow(0, 4, 16, 0, p.CardShadow).Clip()
 			hero.Children(func() {
 				ribbonBox := ui.Box(c).Absolute().Bottom(0).Left(3).Right(0).Height(26).ZIndex(0).PassThrough()
 				a.miniSea.DrawTideRibbon(c, ribbonBox, SeaView{
@@ -923,7 +944,7 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 				{ys.TotalRounds, "完成轮次"},
 			} {
 				card := ui.Row(c).Radius(14).Background(p.Paper).Border(1, p.Line).
-					Shadow(0, 4, 18, 0, p.CardShadow).Clip()
+					Shadow(0, 6, 18, 0, p.CardShadow).Clip()
 				card.Children(func() {
 					ui.Box(c).Width(3).FillHeight().Background(p.AccentVeil)
 					ui.Column(c).Padding(16, 16).Gap(6).Children(func() {
@@ -954,7 +975,7 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 		}
 
 		hmCard := ui.Column(c.Key("year-heatmap-card")).FillWidth().Padding(18, 20).Radius(16).
-			Background(p.Paper).Border(1, p.Line).Shadow(0, 4, 18, 0, p.CardShadow).Gap(12)
+			Background(p.Paper).Border(1, p.Line).Shadow(0, 6, 20, 0, p.CardShadow).Gap(12)
 		hmCard.Children(func() {
 			hoverText := "悬停查看当日记录，点击方块在下方固定显示"
 
@@ -963,11 +984,11 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 				ui.Textf(c, "完成 %d 项任务", ys.TotalTasks).FontSize(12).TextColor(p.Ink3)
 				ui.Spacer(c)
 				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "少").FontSize(11).TextColor(p.Ink4)
+					ui.Text(c, "少").FontSize(10.5).TextColor(p.Ink4)
 					for lv := 0; lv < 5; lv++ {
 						ui.Box(c).Size(10, 10).Radius(2.5).Background(levelCols[lv])
 					}
-					ui.Text(c, "多").FontSize(11).TextColor(p.Ink4)
+					ui.Text(c, "多").FontSize(10.5).TextColor(p.Ink4)
 				})
 			})
 
@@ -1002,7 +1023,7 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 					row int
 					lbl string
 				}{{0, "一"}, {2, "三"}, {4, "五"}} {
-					pt.Text(startX-18, startY+float32(wd.row)*(cell+gap)+cell*0.1, wd.lbl, 11, p.Ink4)
+					pt.Text(startX-18, startY+float32(wd.row)*(cell+gap)+cell*0.1, wd.lbl, 10, p.Ink4)
 				}
 
 				lastMonth := ""
@@ -1020,7 +1041,7 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 						mo := d.Day[5:7]
 						if mo != lastMonth {
 							lastMonth = mo
-							pt.Text(cx, r.Y+4, strings.TrimLeft(mo, "0")+"月", 11, p.Ink4)
+							pt.Text(cx, r.Y+4, strings.TrimLeft(mo, "0")+"月", 10, p.Ink4)
 						}
 					}
 					cellRect := ui.Rect{X: cx, Y: cy, W: cell, H: cell}
@@ -1044,7 +1065,7 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 					if tipDay.Minutes == 0 {
 						txt = fmt.Sprintf("%s · 无记录", tipDay.Day)
 					}
-					pt.Text(startX, startY+7*(cell+gap)+6, txt, 12, p.BlueDeep)
+					pt.Text(startX, startY+7*(cell+gap)+6, txt, 11.5, p.BlueDeep)
 				} else {
 					pt.Text(startX, startY+7*(cell+gap)+6, hoverText, 11, p.Ink4)
 				}
@@ -1084,7 +1105,7 @@ func (a *App) renderYearMonthBars(c *ui.Context, ys stats.YearSummary, p Palette
 	}
 
 	ui.Column(c.Key("year-month-card")).Grow(1).MinWidth(0).Padding(18, 20).Radius(16).
-		Background(p.Paper).Border(1, p.Line).Shadow(0, 4, 18, 0, p.CardShadow).Gap(10).Children(func() {
+		Background(p.Paper).Border(1, p.Line).Shadow(0, 6, 20, 0, p.CardShadow).Gap(10).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Text(c, "月度专注").FontSize(14).FontWeight(700).TextColor(p.Navy)
 			if best >= 0 {
@@ -1103,14 +1124,20 @@ func (a *App) renderYearMonthBars(c *ui.Context, ys stats.YearSummary, p Palette
 			gap := float32(6)
 			barW := (r.W - float32(n-1)*gap) / float32(n)
 			chartH := r.H - labelH
-			pt.Line(r.X, r.Y+chartH+1, r.X+r.W, r.Y+chartH+1, 1, p.LineSoft)
 			for i, m := range months {
 				x := r.X + float32(i)*(barW+gap)
+				// Empty months keep a faint baseline so the axis still reads as twelve steps.
+				h := float32(2)
+				col := p.LineSoft
 				if m.minutes > 0 && maxMin > 0 {
-					bh := max(10, chartH*float32(m.minutes)/float32(maxMin))
-					a.miniSea.DrawWaterColumn(pt, ui.Rect{X: x, Y: r.Y + chartH - bh, W: barW, H: bh}, chartH, p.Dark)
+					h = max(4, chartH*float32(m.minutes)/float32(maxMin))
+					col = p.BlueSoft
+					if i == best {
+						col = p.Blue
+					}
 				}
-				pt.Text(x+barW/2-6, r.Y+chartH+4, strings.TrimLeft(m.key[5:], "0"), 11, p.Ink4)
+				pt.Fill(ui.Rect{X: x, Y: r.Y + chartH - h, W: barW, H: h}, col, 3)
+				pt.Text(x+barW/2-6, r.Y+chartH+4, strings.TrimLeft(m.key[5:], "0"), 10, p.Ink4)
 			}
 		})
 	})
@@ -1138,18 +1165,18 @@ func (a *App) renderYearDayDetail(c *ui.Context, ys stats.YearSummary, p Palette
 	}
 
 	ui.Column(c.Key("year-day-card")).Width(250).Padding(18, 20).Radius(16).
-		Background(p.Paper).Border(1, p.Line).Shadow(0, 4, 18, 0, p.CardShadow).Gap(10).Children(func() {
+		Background(p.Paper).Border(1, p.Line).Shadow(0, 6, 20, 0, p.CardShadow).Gap(10).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Text(c, "当日详情").FontSize(14).FontWeight(700).TextColor(p.Navy)
-			ui.Text(c, day).Font(FontMono).FontSize(12).TextColor(p.Ink3).SingleLine()
+			ui.Text(c, day).Font(FontMono).FontSize(11.5).TextColor(p.Ink3).SingleLine()
 		})
 		ui.Row(c).Gap(6).AlignItems(ui.End).Children(func() {
 			ui.Textf(c, "%d", minutes).Font(FontNum).FontSize(30).FontWeight(700).FontFeatures("tnum").TextColor(p.BlueDeep)
 			ui.Text(c, "分钟").FontSize(12).TextColor(p.Ink3).Padding(0, 0, 5, 0)
 		})
-		ui.Textf(c, "%d 轮专注 · 完成 %d/%d 项任务", rounds, doneTasks, totalTasks).FontSize(13).TextColor(p.Ink2)
+		ui.Textf(c, "%d 轮专注 · 完成 %d/%d 项任务", rounds, doneTasks, totalTasks).FontSize(12.5).TextColor(p.Ink2)
 		ui.Spacer(c)
-		open := ui.Button(c, "查看当日时间轴").FillWidth().Height(32).Radius(9).FontSize(13)
+		open := ui.Button(c, "查看当日时间轴").FillWidth().Height(32).Radius(9).FontSize(12.5)
 		if open.Clicked() {
 			a.tlDayKey = day
 			a.tlScrolledDay = ""

@@ -904,13 +904,9 @@ func (a *App) renderCalendarOverlay(c *ui.Context, p Palette) {
 		}
 	}
 
-	ui.Column(c).Fill().AlignItems(ui.Center).Background(p.Paper).Children(func() {
-	ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(PagePadTop, PagePadX, 18, PagePadX).Gap(14).Children(func() {
-		ui.Row(c).FillWidth().Height(40).AlignItems(ui.Center).Gap(10).Children(func() {
-			plainTitle(c, "日历", p)
-			ui.Text(c, "点选某一天，查看或安排那天的事").FontSize(13).TextColor(p.Ink4).Padding(6, 0, 0, 2)
-		})
-		cardLook(ui.Column(c.Key("cal-card")).FillWidth(), p).
+	ui.Column(c).Fill().Center().Padding(24).Gap(16).Background(p.Surface).Children(func() {
+		ui.Column(c.Key("cal-card")).Width(580).MaxWidthPercent(94).Radius(18).
+			Background(p.Paper).Border(1, p.Line).Shadow(0, 10, 30, 0, p.CardShadow).
 			Transition(calCardMotion).Clip().Children(func() {
 			// Clean Paper & Ocean-Blue Calendar Header
 			ui.Row(c).FillWidth().Height(64).Padding(0, 22).AlignItems(ui.Center).
@@ -975,33 +971,35 @@ func (a *App) renderCalendarOverlay(c *ui.Context, p Palette) {
 
 						cell := ui.ButtonBase(c.Key("cal-"+dk)).Height(52).Radius(12).Center().
 							Transition(colorFadeFast).Cursor(ui.CursorPointer).Label(dk)
-						// Today is a soft blue wash; the selected day is an outline. Neither is a heavy block.
 						if isTodayCell {
-							cell.Background(p.AccentSoft)
-						} else if cell.Hovered() {
-							cell.Background(p.Surface)
-						}
-						if isSel {
-							cell.Border(1.5, p.Blue)
+							cell.Background(p.BlueDeep).Shadow(0, 4, 12, 0, p.BtnGlow)
+						} else if isSel {
+							cell.Background(p.AccentSoft).Border(2, p.BlueDeep)
 						} else if cell.Hovered() {
 							cell.Background(p.AccentSoft).Border(1, p.AccentVeil)
 						}
 						cell.Children(func() {
 							ui.Column(c).Center().Gap(2).Children(func() {
-								tc, tw := p.Ink2, 600
+								tc := p.Ink2
 								if isTodayCell {
-									tc, tw = p.BlueDeep, 800
+									tc = ui.Hex("#FFFFFF")
 								} else if isSel {
 									tc = p.BlueDeep
 								}
-								ui.Textf(c, "%d", dayNum).Font(FontNum).FontSize(16).FontWeight(tw).TextColor(tc)
+								ui.Textf(c, "%d", dayNum).Font(FontNum).FontSize(15.5).FontWeight(600).TextColor(tc)
 								if fMin > 0 {
 									mc := p.BlueDeep
-									ui.Textf(c, "%dm", fMin).Font(FontMono).FontSize(11).FontWeight(600).TextColor(mc).SingleLine()
+									if isTodayCell {
+										mc = ui.Hex("#FFFFFF").Alpha(0.90)
+									}
+									ui.Textf(c, "%dm", fMin).Font(FontMono).FontSize(9.5).FontWeight(600).TextColor(mc).SingleLine()
 								} else if hasTasks {
 									dc := p.Blue
 									if allDone {
 										dc = p.Success
+									}
+									if isTodayCell {
+										dc = ui.Hex("#FFFFFF")
 									}
 									ui.Box(c).Size(5, 5).Radius(999).Background(dc)
 								} else {
@@ -1018,6 +1016,9 @@ func (a *App) renderCalendarOverlay(c *ui.Context, p Palette) {
 			})
 		})
 
-	})
+		backBtn := ui.Button(c, "返回任务").Height(38).Padding(0, 22).Radius(10)
+		if backBtn.Clicked() {
+			a.activeOverlay = ""
+		}
 	})
 }

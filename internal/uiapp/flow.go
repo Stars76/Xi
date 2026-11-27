@@ -537,51 +537,6 @@ func (s *SeaState) DrawTideRibbon(c *ui.Context, box ui.Element, v SeaView) {
 	})
 }
 
-// DrawWaterColumn draws one chart bar as a column of water: rows of the sea's three glyphs,
-// ~ at the surface and heavier with depth, exactly as the sea itself is built. col is the bar's
-// rectangle; fullH is the height a full-scale bar would have, so depth reads the same in every column.
-func (s *SeaState) DrawWaterColumn(p *ui.Painter, col ui.Rect, fullH float32, dark bool) {
-	if col.W < 6 || col.H < 4 || fullH <= 0 {
-		return
-	}
-	s.mu.Lock()
-	s.ensureRibbonGlyphs()
-	glyphs := s.ribbonGlyphs
-	ascents := s.ribbonAscents
-	advances := s.ribbonAdvances
-	s.mu.Unlock()
-
-	colors := seaLightColors
-	if dark {
-		colors = seaDarkColors
-	}
-	const cellX, cellY = 9.0, 9.5
-	perRow := max(1, int(float64(col.W)/cellX))
-	rows := max(1, int(math.Round(float64(col.H)/cellY)))
-	fullRows := math.Max(3, float64(fullH)/cellY)
-	startX := float64(col.X) + (float64(col.W)-float64(perRow)*cellX)/2 + cellX/2
-	bottom := float64(col.Y + col.H)
-	for k := 0; k < rows; k++ {
-		// k counts down from the surface: one row of ~ on top, then heavier glyphs and deeper blue.
-		depth := float64(k) / fullRows
-		idx := 0
-		if k > 0 {
-			idx = min(2, 1+int(depth*2.6))
-		}
-		ci := min(len(colors)-1, 3+int(math.Round(depth*float64(len(colors)-4))))
-		alpha := float32(0.72 + 0.26*math.Min(1, depth*1.4))
-		y := bottom - float64(rows-k)*cellY + cellY/2
-		shift := 0.0
-		if k%2 == 1 && perRow > 1 {
-			shift = cellX * 0.3
-		}
-		for j := 0; j < perRow; j++ {
-			x := startX + float64(j)*cellX + shift
-			p.Glyphs(glyphs[idx], float32(x)-advances[idx]/2, float32(y)+ascents[idx]*0.36, colors[ci].Alpha(alpha))
-		}
-	}
-}
-
 // DrawCalmWave draws serene static ASCII wave ripples for empty states (zero animation cost).
 func (s *SeaState) DrawCalmWave(p *ui.Painter, r ui.Rect, dark bool) {
 	w := float64(r.W)
