@@ -54,7 +54,7 @@ func (c *Client) httpClient() *http.Client {
 	return &http.Client{Timeout: 6 * time.Second}
 }
 
-// MapWMOCode maps Open-Meteo WMO weather interpretation codes to Sisyphus ocean weather states.
+// MapWMOCode maps Open-Meteo WMO weather interpretation codes to the sea's weather states.
 func MapWMOCode(code int) string {
 	switch {
 	case code >= 95:

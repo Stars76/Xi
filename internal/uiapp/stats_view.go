@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/dateutil"
-	"github.com/Stars76/526Hz/internal/notes"
-	"github.com/Stars76/526Hz/internal/stats"
-	"github.com/Stars76/526Hz/internal/store"
+	"github.com/Stars76/Xi/internal/dateutil"
+	"github.com/Stars76/Xi/internal/notes"
+	"github.com/Stars76/Xi/internal/stats"
+	"github.com/Stars76/Xi/internal/store"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -977,7 +977,7 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 		hmCard := ui.Column(c.Key("year-heatmap-card")).FillWidth().Padding(18, 20).Radius(16).
 			Background(p.Paper).Border(1, p.Line).Shadow(0, 6, 20, 0, p.CardShadow).Gap(12)
 		hmCard.Children(func() {
-			hoverText := "悬停方块查看当日记录"
+			hoverText := "悬停查看当日记录，点击方块在下方固定显示"
 
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Text(c, "年度热力图").FontSize(14).FontWeight(700).TextColor(p.Navy)
@@ -994,7 +994,11 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 
 			hmBox := ui.Box(c.Key("year-hm-canvas")).FillWidth().Height(156)
 			hpx, hpy, hpIn := hmBox.PointerPosition()
-			hmBox.Draw(func(pt *ui.Painter, r ui.Rect) {
+			if hmBox.Clicked() && a.yearHoverDay != "" {
+				a.yearSelDay = a.yearHoverDay
+			}
+			selDay := a.yearSelDay
+			hmBox.Cursor(ui.CursorPointer).Draw(func(pt *ui.Painter, r ui.Rect) {
 				leftPad := float32(24)
 				topPad := float32(20)
 				botPad := float32(22)
@@ -1042,10 +1046,19 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 					}
 					cellRect := ui.Rect{X: cx, Y: cy, W: cell, H: cell}
 					pt.Fill(cellRect, levelCols[d.Level], 2.5)
+					if d.Day == selDay {
+						pt.Stroke(cellRect, p.Blue, 2.5, 2)
+					}
 					if hpIn && hpx >= cx-1 && hpx <= cx+cell+1 && hpy >= cy-1 && hpy <= cy+cell+1 {
 						pt.Stroke(cellRect, p.Navy, 2.5, 1.5)
 						tipDay = d
 					}
+				}
+				// Remembered for the next build so a click can pin the hovered day.
+				if tipDay != nil {
+					a.yearHoverDay = tipDay.Day
+				} else {
+					a.yearHoverDay = ""
 				}
 				if tipDay != nil {
 					txt := fmt.Sprintf("%s · %d 分钟（%d 轮）", tipDay.Day, tipDay.Minutes, tipDay.Rounds)
@@ -1058,5 +1071,117 @@ func (a *App) renderYearHeatmapTab(c *ui.Context, ys stats.YearSummary, p Palett
 				}
 			})
 		})
+
+		// Below the heatmap: month-by-month totals beside the pinned day's detail
+		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Stretch).Children(func() {
+			a.renderYearMonthBars(c, ys, p)
+			a.renderYearDayDetail(c, ys, p)
+		})
+	})
+}
+
+// renderYearMonthBars draws focus minutes per calendar month across the heatmap's 52-week window.
+func (a *App) renderYearMonthBars(c *ui.Context, ys stats.YearSummary, p Palette) {
+	type monthSum struct {
+		key     string // YYYY-MM
+		minutes int
+	}
+	var months []monthSum
+	for _, d := range ys.Days {
+		if len(d.Day) < 7 {
+			continue
+		}
+		k := d.Day[:7]
+		if n := len(months); n == 0 || months[n-1].key != k {
+			months = append(months, monthSum{key: k})
+		}
+		months[len(months)-1].minutes += d.Minutes
+	}
+	maxMin, best := 0, -1
+	for i, m := range months {
+		if m.minutes > maxMin {
+			maxMin, best = m.minutes, i
+		}
+	}
+
+	ui.Column(c.Key("year-month-card")).Grow(1).MinWidth(0).Padding(18, 20).Radius(16).
+		Background(p.Paper).Border(1, p.Line).Shadow(0, 6, 20, 0, p.CardShadow).Gap(10).Children(func() {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, "月度专注").FontSize(14).FontWeight(700).TextColor(p.Navy)
+			if best >= 0 {
+				ui.Textf(c, "最高 %s月 · %d 分钟", strings.TrimLeft(months[best].key[5:], "0"), maxMin).
+					FontSize(12).TextColor(p.Ink3).SingleLine()
+			} else {
+				ui.Text(c, "还没有专注记录").FontSize(12).TextColor(p.Ink3)
+			}
+		})
+		ui.Box(c.Key("year-month-canvas")).FillWidth().Height(120).Draw(func(pt *ui.Painter, r ui.Rect) {
+			n := len(months)
+			if n == 0 || r.W < 60 {
+				return
+			}
+			labelH := float32(18)
+			gap := float32(6)
+			barW := (r.W - float32(n-1)*gap) / float32(n)
+			chartH := r.H - labelH
+			for i, m := range months {
+				x := r.X + float32(i)*(barW+gap)
+				// Empty months keep a faint baseline so the axis still reads as twelve steps.
+				h := float32(2)
+				col := p.LineSoft
+				if m.minutes > 0 && maxMin > 0 {
+					h = max(4, chartH*float32(m.minutes)/float32(maxMin))
+					col = p.BlueSoft
+					if i == best {
+						col = p.Blue
+					}
+				}
+				pt.Fill(ui.Rect{X: x, Y: r.Y + chartH - h, W: barW, H: h}, col, 3)
+				pt.Text(x+barW/2-6, r.Y+chartH+4, strings.TrimLeft(m.key[5:], "0"), 10, p.Ink4)
+			}
+		})
+	})
+}
+
+// renderYearDayDetail shows the day pinned by clicking a heatmap cell (today until one is picked).
+func (a *App) renderYearDayDetail(c *ui.Context, ys stats.YearSummary, p Palette) {
+	day := a.yearSelDay
+	if day == "" {
+		day = a.Todo.TodayKey()
+	}
+	minutes, rounds := 0, 0
+	for _, d := range ys.Days {
+		if d.Day == day {
+			minutes, rounds = d.Minutes, d.Rounds
+			break
+		}
+	}
+	doneTasks, totalTasks := 0, 0
+	for _, tk := range a.Todo.TasksForDay(day) {
+		totalTasks++
+		if tk.Done {
+			doneTasks++
+		}
+	}
+
+	ui.Column(c.Key("year-day-card")).Width(250).Padding(18, 20).Radius(16).
+		Background(p.Paper).Border(1, p.Line).Shadow(0, 6, 20, 0, p.CardShadow).Gap(10).Children(func() {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, "当日详情").FontSize(14).FontWeight(700).TextColor(p.Navy)
+			ui.Text(c, day).Font(FontMono).FontSize(11.5).TextColor(p.Ink3).SingleLine()
+		})
+		ui.Row(c).Gap(6).AlignItems(ui.End).Children(func() {
+			ui.Textf(c, "%d", minutes).Font(FontNum).FontSize(30).FontWeight(700).FontFeatures("tnum").TextColor(p.BlueDeep)
+			ui.Text(c, "分钟").FontSize(12).TextColor(p.Ink3).Padding(0, 0, 5, 0)
+		})
+		ui.Textf(c, "%d 轮专注 · 完成 %d/%d 项任务", rounds, doneTasks, totalTasks).FontSize(12.5).TextColor(p.Ink2)
+		ui.Spacer(c)
+		open := ui.Button(c, "查看当日时间轴").FillWidth().Height(32).Radius(9).FontSize(12.5)
+		if open.Clicked() {
+			a.tlDayKey = day
+			a.tlScrolledDay = ""
+			a.statsTab = 0
+			a.markStatsDirty()
+		}
 	})
 }

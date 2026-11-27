@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/store"
-	"github.com/Stars76/526Hz/internal/weather"
+	"github.com/Stars76/Xi/internal/store"
+	"github.com/Stars76/Xi/internal/weather"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -99,8 +99,8 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 							}
 							b.Children(func() {
 								ui.Column(c).Center().Gap(2).Children(func() {
-									ui.Text(c, prCopy.Name).FontSize(12.5).FontWeight(700).TextColor(p.Navy).SingleLine()
-									ui.Text(c, sub).FontSize(10.5).TextColor(p.Ink3).SingleLine()
+									ui.Text(c, prCopy.Name).FontSize(13).FontWeight(700).TextColor(p.Navy).SingleLine()
+									ui.Text(c, sub).FontSize(11).TextColor(p.Ink3).SingleLine()
 								})
 							})
 							if b.Clicked() {
@@ -162,12 +162,12 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 						ui.Column(c).FillWidth().Padding(9, 11).Radius(10).Background(p.Surface).Border(1, p.LineSoft).Gap(6).Children(func() {
 							ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 								in := ui.TextInput(c.Key("scene-city-in"), &a.sceneCityDraft).
-									Height(30).FontSize(12.5).Placeholder("输入城市名（如：杭州、北京）").Grow(1).Label("天气城市")
+									Height(30).FontSize(13).Placeholder("输入城市名（如：杭州、北京）").Grow(1).Label("天气城市")
 								btnLbl := "同步"
 								if syncBusy {
 									btnLbl = "同步中…"
 								}
-								syncB := ui.PrimaryButton(c, btnLbl).Height(30).Padding(0, 12).FontSize(12).Disabled(syncBusy)
+								syncB := primaryBtn(c, btnLbl, 12, p).Height(30).Padding(0, 12).Disabled(syncBusy)
 								if in.Submitted() || syncB.Clicked() {
 									a.syncLiveWeatherAsync(a.sceneCityDraft, true)
 								}
@@ -180,7 +180,7 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 									tempStr = " " + formatTemp(*sc.LiveTempC)
 								}
 								ui.Textf(c, "%s · %s%s", sc.ResolvedCity, weather.WeatherLabel(sc.LiveWeather), tempStr).
-									FontSize(11.5).FontWeight(600).TextColor(p.BlueDeep)
+									FontSize(12).FontWeight(600).TextColor(p.BlueDeep)
 							}
 						})
 					}
@@ -213,7 +213,7 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 					})
 
 					ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, "音量").FontSize(11.5).TextColor(p.Ink3)
+						ui.Text(c, "音量").FontSize(12).TextColor(p.Ink3)
 						vol := sc.AmbientVolume
 						if ui.Slider(c.Key("sc-ambient-vol"), &vol, 0.1, 1.0).Grow(1).Label("环境音量").Changed() {
 							a.updateSeaScene(func(cfg *store.SeaSceneConfig) {
@@ -226,7 +226,7 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 						if isPrev {
 							prevLbl = "停止试听"
 						}
-						pvBtn := ui.Button(c, prevLbl).Height(26).Padding(0, 10).Radius(7).FontSize(11.5)
+						pvBtn := ui.Button(c, prevLbl).Height(26).Padding(0, 10).Radius(7).FontSize(12)
 						if pvBtn.Clicked() && a.Ambient != nil {
 							if isPrev {
 								a.Ambient.StopPreview()
@@ -244,7 +244,7 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 					ui.Row(c).Grow(1).Padding(8, 10).Radius(9).Background(p.Surface).Border(1, p.LineSoft).
 						AlignItems(ui.Center).Gap(6).Children(func() {
 						ui.Column(c).Grow(1).Gap(2).Children(func() {
-							ui.Text(c, "天色光线").FontSize(12.5).FontWeight(700).TextColor(p.Navy)
+							ui.Text(c, "天色光线").FontSize(13).FontWeight(700).TextColor(p.Navy)
 							ui.Text(c, periodLabel).FontSize(11).TextColor(p.BlueDeep)
 						})
 						tl := sc.TimeLighting
@@ -258,7 +258,7 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 					ui.Row(c).Grow(1).Padding(8, 10).Radius(9).Background(p.Surface).Border(1, p.LineSoft).
 						AlignItems(ui.Center).Gap(6).Children(func() {
 						ui.Column(c).Grow(1).Gap(2).Children(func() {
-							ui.Text(c, "海面彩蛋").FontSize(12.5).FontWeight(700).TextColor(p.Navy)
+							ui.Text(c, "海面彩蛋").FontSize(13).FontWeight(700).TextColor(p.Navy)
 							ui.Text(c, "随机出现").FontSize(11).TextColor(p.Ink3)
 						})
 						eo := sc.EncountersOn
@@ -303,16 +303,16 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 							ui.Column(c.Key("atlas-"+mCopy.Kind)).FillWidth().Padding(8, 10).Radius(10).
 								Background(cardBg).Border(1, cardBd).Gap(5).Children(func() {
 								ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-									ui.Text(c, mCopy.Name).FontSize(12.5).FontWeight(700).TextColor(p.Navy).Grow(1).SingleLine()
+									ui.Text(c, mCopy.Name).FontSize(13).FontWeight(700).TextColor(p.Navy).Grow(1).SingleLine()
 									if isActive {
 										badgeChip(c, "出现中", p.SuccessSoft, p.Success, p.SuccessLine)
 									} else if cnt > 0 {
 										badgeChip(c, fmt.Sprintf("%d次", cnt), p.Paper, p.BlueDeep, p.Line)
 									}
 								})
-								ui.Text(c, mCopy.Preview).Font(FontMono).FontSize(10).TextColor(p.BlueDeep).SingleLine()
+								ui.Text(c, mCopy.Preview).Font(FontMono).FontSize(11).TextColor(p.BlueDeep).SingleLine()
 								ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-									ui.Text(c, mCopy.Hint).FontSize(10.5).TextColor(p.Ink4).Grow(1).SingleLine()
+									ui.Text(c, mCopy.Hint).FontSize(11).TextColor(p.Ink4).Grow(1).SingleLine()
 									sumBtn := ui.ButtonBase(c.Key("summon-"+mCopy.Kind)).Height(24).Padding(0, 9).Radius(6).
 										Background(p.Paper).Border(1, p.Line).Transition(colorFadeFast).
 										Cursor(ui.CursorPointer).Label("召唤 " + mCopy.Name)
@@ -340,7 +340,7 @@ func (a *App) renderSeaSceneModal(c *ui.Context, p Palette) {
 					a.sceneModalOpen = false
 				}
 				ui.Spacer(c)
-				doneBtn := ui.PrimaryButton(c, "完成").Height(32).Padding(0, 18).Radius(9).FontSize(12)
+				doneBtn := primaryBtn(c, "完成", 12, p).Height(32).Padding(0, 18).Radius(9)
 				if doneBtn.Clicked() {
 					a.sceneModalOpen = false
 				}

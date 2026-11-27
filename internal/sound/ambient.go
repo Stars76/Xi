@@ -12,7 +12,7 @@ const ambientSampleRate = 48000
 
 // ambientDecoder synthesizes infinite, smooth, stereo procedural nature audio
 // calibrated to comfortable audible background levels (~ -16 dBFS RMS at unity gain)
-// synchronized to 526Hz weather states:
+// synchronized to the sea's weather states:
 // clear = rolling ocean surf, rain = rainfall + droplets, storm = downpour + distant thunder, snow/fog = coastal breeze.
 type ambientDecoder struct {
 	mu             sync.Mutex

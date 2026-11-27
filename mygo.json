@@ -1,21 +1,23 @@
 {
-  "name": "526Hz",
-  "slug": "526hz",
-  "identifier": "com.ocean526hz.studio",
+  "name": "Xi",
+  "slug": "xi",
+  "identifier": "com.stars76.xi",
   "version": "3.0.0",
   "copyright": "© 2026 GenZ",
   "license": "MIT",
   "out": "release",
   "windows": {
-    "displayName": "526Hz",
-    "installDirName": "526Hz"
+    "displayName": "汐",
+    "installDirName": "Xi"
   },
   "macos": {
     "minimumSystemVersion": "12.0",
-    "dmgTitle": "526Hz"
+    "dmgTitle": "汐"
   },
   "linux": {
     "webview": false,
-    "categories": ["Utility"]
+    "categories": [
+      "Utility"
+    ]
   }
 }

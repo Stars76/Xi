@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/store"
+	"github.com/Stars76/Xi/internal/store"
 )
 
 func localISO(y int, m time.Month, d, hh, mm int) string {

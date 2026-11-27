@@ -1,4 +1,4 @@
-module github.com/Stars76/526Hz
+module github.com/Stars76/Xi
 
 go 1.27.4
 

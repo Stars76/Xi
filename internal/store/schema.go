@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/dateutil"
+	"github.com/Stars76/Xi/internal/dateutil"
 )
 
 const (
@@ -204,6 +204,10 @@ type HistoryEntry struct {
 type TodoViewPrefs struct {
 	OnlyOpen  bool     `json:"onlyOpen"`
 	Collapsed []string `json:"collapsed"`
+	// Window layout the user left behind; optional so older stores stay valid.
+	SidebarCollapsed bool `json:"sidebarCollapsed,omitempty"`
+	TimelineOpen     bool `json:"timelineOpen,omitempty"`
+	DoneGroupOpen    bool `json:"doneGroupOpen,omitempty"`
 }
 
 // TimelineEdit overrides a derived timeline block.
@@ -549,7 +553,17 @@ func ValidateValue(key string, raw json.RawMessage) ValidationResult {
 			errs = append(errs, "任务视图偏好格式非法")
 			break
 		}
-		res.Raw = mustMarshal(TodoViewPrefs{OnlyOpen: oo, Collapsed: col})
+		optBool := func(name string) bool {
+			v, _ := asBool(m[name])
+			return v
+		}
+		res.Raw = mustMarshal(TodoViewPrefs{
+			OnlyOpen:         oo,
+			Collapsed:        col,
+			SidebarCollapsed: optBool("sidebarCollapsed"),
+			TimelineOpen:     optBool("timelineOpen"),
+			DoneGroupOpen:    optBool("doneGroupOpen"),
+		})
 
 	case KeyStateV2, KeyStateV1:
 		st := validateFocusState(raw, key, &errs, &repaired)

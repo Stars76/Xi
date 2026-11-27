@@ -10,15 +10,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/assets"
-	"github.com/Stars76/526Hz/internal/dateutil"
-	"github.com/Stars76/526Hz/internal/notes"
-	"github.com/Stars76/526Hz/internal/sound"
-	"github.com/Stars76/526Hz/internal/stats"
-	"github.com/Stars76/526Hz/internal/store"
-	"github.com/Stars76/526Hz/internal/timer"
-	"github.com/Stars76/526Hz/internal/todo"
-	"github.com/Stars76/526Hz/internal/weather"
+	"github.com/Stars76/Xi/internal/assets"
+	"github.com/Stars76/Xi/internal/dateutil"
+	"github.com/Stars76/Xi/internal/notes"
+	"github.com/Stars76/Xi/internal/sound"
+	"github.com/Stars76/Xi/internal/stats"
+	"github.com/Stars76/Xi/internal/store"
+	"github.com/Stars76/Xi/internal/timer"
+	"github.com/Stars76/Xi/internal/todo"
+	"github.com/Stars76/Xi/internal/weather"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
@@ -75,6 +75,10 @@ type App struct {
 	todoScroll     ui.ScrollState
 	lastUndoTask   *store.Task
 	lastUndoIndex  int
+	focusNewTask   bool      // Ctrl+N: focus the new-task input on the next frame
+	stageBindAll   bool      // Focus Clock: quick-bind strip expanded to every open task
+	bindPickOpen   bool      // Today page: "which task is this round for?" picker
+	resetArmedAt   time.Time // first click on 重置 during an active round arms a confirm step
 
 	// Settings view
 	newDailyDraft string
@@ -120,6 +124,8 @@ type App struct {
 	yearDirty        bool
 	cachedHistory    []store.HistoryEntry
 	historyDirty     bool
+	yearSelDay       string // year heatmap: day pinned by a click
+	yearHoverDay     string // year heatmap: day under the pointer at the last paint
 	statsOnlyUnbound bool
 	statsShowAllRecs bool
 	lastUndoHistory  []store.HistoryEntry
@@ -201,6 +207,9 @@ func NewApp(cfg AppConfig) *App {
 	a.Todo.Init()
 	vp := a.Todo.ViewPrefs()
 	a.onlyOpen = vp.OnlyOpen
+	a.sidebarCollapsed = vp.SidebarCollapsed
+	a.tlDrawerOpen = vp.TimelineOpen
+	a.doneGroupOpen = vp.DoneGroupOpen
 	for _, id := range vp.Collapsed {
 		a.collapsed[id] = true
 	}
@@ -516,7 +525,13 @@ func (a *App) saveTodoViewPrefs() {
 			col = append(col, k)
 		}
 	}
-	a.Todo.SaveViewPrefs(store.TodoViewPrefs{OnlyOpen: a.onlyOpen, Collapsed: col})
+	a.Todo.SaveViewPrefs(store.TodoViewPrefs{
+		OnlyOpen:         a.onlyOpen,
+		Collapsed:        col,
+		SidebarCollapsed: a.sidebarCollapsed,
+		TimelineOpen:     a.tlDrawerOpen,
+		DoneGroupOpen:    a.doneGroupOpen,
+	})
 }
 
 func (a *App) SendNotification(title, body string) {
@@ -538,7 +553,7 @@ func (a *App) updateKeepRunning(running bool) {
 		return
 	}
 	if running && a.keepRunRel == nil {
-		a.keepRunRel = mygo.Power.KeepRunning("526Hz 专注计时中")
+		a.keepRunRel = mygo.Power.KeepRunning("汐 专注计时中")
 	} else if !running && a.keepRunRel != nil {
 		rel := a.keepRunRel
 		a.keepRunRel = nil
@@ -715,7 +730,7 @@ func (a *App) onTimerEvent(ev timer.Event) {
 					a.Sound.Play("break")
 				}
 			}
-			// Reward completed focus rounds with a natural celebratory DeepSeek Whale (or ocean easter egg)!
+			// Reward completed focus rounds with a celebratory blue whale (or another ocean easter egg).
 			if ev.Phase == "focus" && a.seaSceneSnapshot().EncountersOn {
 				kind := a.stageSea.TriggerEncounter(EncounterWhale, a.now(), true)
 				a.recordNaturalEncounter(kind)
@@ -814,7 +829,7 @@ func (a *App) OpenMainWindow() {
 	}
 
 	opts := mygo.WindowOptions{
-		Title:           "526Hz",
+		Title:           "汐",
 		Width:           1060,
 		Height:          780,
 		MinWidth:        720,
@@ -845,7 +860,7 @@ func (a *App) OpenMainWindow() {
 				if runtime.GOOS == "darwin" {
 					body = "专注钟继续计时。点菜单栏图标可回到主窗，右键可开始/暂停或退出。"
 				}
-				a.SendNotification("526Hz 仍在后台运行", body)
+				a.SendNotification("汐 仍在后台运行", body)
 			}
 			a.Log.Info("主窗已隐藏到托盘")
 		}
@@ -1005,17 +1020,94 @@ func (a *App) StartDesktop(compactOnly bool, startHidden bool) {
 }
 
 // StartTaskFocus binds a task to the focus timer and enters the unified in-window Focus Stage.
+// navigate switches the main-window page ("" = Today) and refreshes the caches that page reads.
+func (a *App) navigate(id string) {
+	switch id {
+	case "stats":
+		a.tlDayKey = a.Todo.TodayKey()
+		a.tlScrolledDay = ""
+		a.statsShowAllRecs = false
+		a.markStatsDirty()
+	case "settings":
+		a.loadTemplateDrafts()
+		a.mu.Lock()
+		a.recoveryDirty = true
+		a.mu.Unlock()
+	}
+	a.bindPickOpen = false
+	a.activeOverlay = id
+}
+
+// overlayOpen reports whether an in-page overlay or inline editor currently owns the keyboard,
+// in which case global shortcuts stay out of the way.
+func (a *App) overlayOpen() bool {
+	return a.importOpen || a.clearAskOpen || a.sceneModalOpen || a.timerShowSet || a.timerShowSetup ||
+		a.timerDoneVisible || a.tlFormOpen || a.editingTaskID != "" || a.editingSubKey != "" ||
+		a.subAddTaskID != "" || a.alarmTaskID != "" || a.editingDid != ""
+}
+
+// primaryTimerAction is the start / pause / resume toggle shared by buttons and the Space shortcut.
+// From Today, an idle unbound start first asks which task the round is for.
+func (a *App) primaryTimerAction(snap timer.Snapshot, askTask bool) {
+	t := snap.Timer
+	switch {
+	case t.Running:
+		a.Timer.Command("pause")
+	case askTask && t.Idle && t.Phase == "focus" && t.Task == nil && a.hasOpenTaskToday():
+		a.bindPickOpen = !a.bindPickOpen
+	default:
+		a.Timer.Command("start")
+	}
+}
+
+func (a *App) hasOpenTaskToday() bool {
+	for _, tk := range a.Todo.TasksForDay(a.Todo.TodayKey()) {
+		if !tk.Done {
+			return true
+		}
+	}
+	return false
+}
+
+// copyDailyReview copies the Markdown daily review of day to the clipboard.
+func (a *App) copyDailyReview(c *ui.Context, day string) {
+	res := notes.BuildNote(a.Store, notes.BuildRequest{Kind: "daily", Day: day}, a.now())
+	if !res.OK {
+		c.Toast("生成复盘失败")
+		return
+	}
+	c.WriteClipboard(res.Text)
+	c.Toast("已复制「" + res.Name + "」到剪贴板")
+}
+
+const resetConfirmWindow = 4 * time.Second
+
+// resetArmed reports whether the reset button is currently waiting for its confirming second click.
+func (a *App) resetArmed() bool {
+	return !a.resetArmedAt.IsZero() && time.Since(a.resetArmedAt) < resetConfirmWindow
+}
+
+// requestReset resets immediately when no round is in progress. An in-progress round is recorded as
+// abandoned by a reset, so it needs a second click within resetConfirmWindow.
+func (a *App) requestReset(snap timer.Snapshot) {
+	if snap.Timer.StartedAt == "" || a.resetArmed() {
+		a.resetArmedAt = time.Time{}
+		a.Timer.Command("reset")
+		return
+	}
+	a.resetArmedAt = time.Now()
+	time.AfterFunc(resetConfirmWindow+50*time.Millisecond, a.InvalidateAll)
+}
+
 func (a *App) StartTaskFocus(c *ui.Context, t store.Task) {
-	snap := a.Timer.Snapshot()
-	alreadyBound := snap.Timer.StartedAt != "" && snap.Timer.Phase == "focus" && snap.Timer.Task != nil && snap.Timer.Task.ID == t.ID && snap.Timer.Task.Day == a.Todo.ViewDay()
-	res := a.Timer.StartTask(t.ID, a.Todo.ViewDay(), !alreadyBound)
+	// One click starts the round with the current duration/plan; the plan can still be changed from the Focus Clock.
+	res := a.Timer.StartTask(t.ID, a.Todo.ViewDay(), false)
 	if !res.OK {
 		c.Toast(res.Error)
 		return
 	}
-	if !alreadyBound {
-		a.timerShowSetup = true
-	}
+	a.timerShowSetup = false
+	a.bindPickOpen = false
 	a.timerDoneVisible = false
 	a.activeOverlay = "focus"
 	if a.TimerWin != nil && !a.TimerWin.IsDestroyed() {
@@ -1028,7 +1120,7 @@ func (a *App) LaunchImportPicker(c *ui.Context) {
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Parent:  parent,
-			Title:   "选择 526Hz 备份文件",
+			Title:   "选择 汐 的备份文件",
 			Filters: []mygo.FileFilter{{Name: "JSON 备份", Extensions: []string{"json"}}},
 		})
 		if err != nil || len(paths) == 0 {
@@ -1066,10 +1158,10 @@ func (a *App) LaunchExportDialog() {
 			return
 		}
 		docsDir, _ := mygo.App.Path(mygo.PathDocuments)
-		defPath := filepath.Join(docsDir, fmt.Sprintf("526Hz-backup-%s.json", a.now().Format("2006-01-02")))
+		defPath := filepath.Join(docsDir, fmt.Sprintf("Xi-backup-%s.json", a.now().Format("2006-01-02")))
 		dest, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
 			Parent:      parent,
-			Title:       "导出 526Hz 备份",
+			Title:       "导出 汐 的备份",
 			DefaultPath: defPath,
 			Filters:     []mygo.FileFilter{{Name: "JSON 文件", Extensions: []string{"json"}}},
 		})

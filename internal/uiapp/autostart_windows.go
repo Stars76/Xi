@@ -13,8 +13,11 @@ import (
 
 const (
 	autostartRegPath   = `Software\Microsoft\Windows\CurrentVersion\Run`
-	autostartValueName = "526Hz"
+	autostartValueName = "Xi"
 )
+
+// legacyAutostartValueNames are the registry values earlier names of the app registered.
+var legacyAutostartValueNames = []string{"526Hz"}
 
 func AutostartSupported() bool { return true }
 
@@ -28,8 +31,12 @@ func IsAutostartEnabled() bool {
 		return false
 	}
 	defer k.Close()
-	val, _, err := k.GetStringValue(autostartValueName)
-	return err == nil && strings.TrimSpace(val) != ""
+	for _, name := range append([]string{autostartValueName}, legacyAutostartValueNames...) {
+		if val, _, err := k.GetStringValue(name); err == nil && strings.TrimSpace(val) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func SetAutostartEnabled(enable bool) error {
@@ -38,6 +45,10 @@ func SetAutostartEnabled(enable bool) error {
 		return err
 	}
 	defer k.Close()
+	// An entry left by an earlier name would start a second, stale copy: always drop it.
+	for _, name := range legacyAutostartValueNames {
+		_ = k.DeleteValue(name)
+	}
 	if !enable {
 		err = k.DeleteValue(autostartValueName)
 		if errors.Is(err, registry.ErrNotExist) {

@@ -6,10 +6,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/assets"
-	"github.com/Stars76/526Hz/internal/dateutil"
-	"github.com/Stars76/526Hz/internal/stats"
-	"github.com/Stars76/526Hz/internal/timer"
+	"github.com/Stars76/Xi/internal/assets"
+	"github.com/Stars76/Xi/internal/dateutil"
+	"github.com/Stars76/Xi/internal/stats"
+	"github.com/Stars76/Xi/internal/timer"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -65,22 +65,6 @@ func iconBtn(c *ui.Context, icon *ui.SVG, label, tip string, p Palette) ui.Eleme
 	return b
 }
 
-// sheenPrimaryBtn renders a tactile same-hue vertical-gradient primary button (#007CFF -> #0066D6) with soft blue glow.
-func sheenPrimaryBtn(c *ui.Context, label string, h float32, p Palette) ui.Element {
-	b := ui.ButtonBase(c).Height(h).Padding(0, 18).Radius(10).Center().
-		LinearGradient(ui.LinearGradient{From: p.Blue, To: p.BlueDeep, Angle: 180, Oklab: true}).
-		Shadow(0, 3, 10, 0, p.BtnGlow).
-		Transition(cardFadeFast).Cursor(ui.CursorPointer).Label(label)
-	if b.Hovered() {
-		b.LinearGradient(ui.LinearGradient{From: p.Blue2, To: p.Blue, Angle: 180, Oklab: true}).
-			Shadow(0, 5, 14, 0, p.BtnGlow)
-	}
-	b.Children(func() {
-		ui.Text(c, label).FontSize(14.5).FontWeight(700).TextColor(ui.Hex("#FFFFFF")).SingleLine()
-	})
-	return b
-}
-
 func badgeChip(c *ui.Context, text string, bg, fg, border ui.Color) ui.Element {
 	el := ui.Row(c).Height(20).Padding(0, 8).Radius(999).Background(bg).AlignItems(ui.Center)
 	if border != ui.Transparent {
@@ -92,8 +76,8 @@ func badgeChip(c *ui.Context, text string, bg, fg, border ui.Color) ui.Element {
 	return el
 }
 
-// MainView renders the unified Sisyphus studio shell:
-// collapsible 196px Ocean-Tide Sidebar + Center Workspace (Today / Focus Clock / Calendar / Stats / Settings) + Optional Right Timeline Drawer.
+// MainView renders the unified studio shell:
+// Ocean-Tide Sidebar (196px, or a 56px icon rail) + Center Workspace (Today / Focus Clock / Calendar / Stats / Settings) + Optional Right Timeline Drawer.
 func (a *App) MainView(c *ui.Context) {
 	th, p := a.paletteOf(c)
 	c.SetTheme(th)
@@ -114,6 +98,8 @@ func (a *App) MainView(c *ui.Context) {
 			a.Timer.ClearAwaitPlan()
 		case a.timerDoneVisible:
 			a.timerDoneVisible = false
+		case a.bindPickOpen:
+			a.bindPickOpen = false
 		case a.alarmTaskID != "":
 			a.alarmTaskID = ""
 		case a.editingTaskID != "":
@@ -132,6 +118,13 @@ func (a *App) MainView(c *ui.Context) {
 	}
 
 	snap := a.Timer.Snapshot()
+	a.handleGlobalShortcuts(c, snap)
+
+	// Responsive shell: the sidebar folds to an icon rail (by choice, or when the window is narrow)
+	// and the timeline drawer only opens when the workspace keeps a usable width beside it.
+	winW, _ := c.Size()
+	rail := a.sidebarCollapsed || winW < railBelowWidth
+	drawerFits := winW >= drawerMinWidth
 	bar := c.TitleBar()
 	leftPad := float32(14)
 	if runtime.GOOS == "darwin" && bar.Left > 0 {
@@ -147,26 +140,28 @@ func (a *App) MainView(c *ui.Context) {
 		}
 		tb.Children(func() {
 			// Brand zone + collapsible sidebar toggle
-			brandW := float32(196)
-			if a.sidebarCollapsed {
+			brandW := float32(sidebarWidth)
+			if rail {
 				brandW = 160
 			}
 			brandRow := ui.Row(c).Width(brandW).FillHeight().Padding(0, 10, 0, leftPad).Gap(7).AlignItems(ui.Center)
-			if !a.sidebarCollapsed {
+			if !rail {
 				brandRow.BorderWidth(0, 1, 0, 0).BorderColor(p.LineSoft)
 			}
 			brandRow.Children(func() {
-				sbBtn := iconBtn(c, IconSidebar, "切换侧栏", "展开 / 收起导航侧栏", p).Size(28, 28)
+				sbTip := "展开 / 收起导航侧栏"
+				if winW < railBelowWidth {
+					sbTip = "窗口较窄，侧栏已自动收为图标栏"
+				}
+				sbBtn := iconBtn(c, IconSidebar, "切换侧栏", sbTip, p).Size(28, 28)
 				if sbBtn.Clicked() {
 					a.sidebarCollapsed = !a.sidebarCollapsed
+					a.saveTodoViewPrefs()
 				}
 				if logo := logoSource(); logo != nil {
 					ui.Image(c, logo).Size(20, 20).Radius(5)
 				}
-				ui.RichText(c,
-					ui.Span{Text: "526", Weight: 800, Size: 16.5, Color: p.Navy},
-					ui.Span{Text: "Hz", Weight: 800, Size: 16.5, Color: p.Blue},
-				).Font(FontNum).LetterSpacing(-0.2)
+				ui.Text(c, "汐").FontSize(18).FontWeight(800).TextColor(p.Navy).SingleLine()
 			})
 
 			ui.Spacer(c)
@@ -174,13 +169,20 @@ func (a *App) MainView(c *ui.Context) {
 			// Right timeline drawer toggle + live timer status chip (opens in-window Focus Stage or PiP!)
 			ui.Row(c).Gap(8).Padding(0, 10, 0, 0).AlignItems(ui.Center).Children(func() {
 				tlBtn := iconBtn(c, IconTimeline, "切换今日时间轴侧栏", "展开 / 收起今日时间轴", p)
-				if a.tlDrawerOpen {
+				if a.tlDrawerOpen && drawerFits {
 					tlBtn.Background(p.AccentSoft).Border(1, p.AccentVeil)
 				}
 				if tlBtn.Clicked() {
-					a.tlDrawerOpen = !a.tlDrawerOpen
-					if a.tlDrawerOpen {
-						a.markStatsDirty()
+					if drawerFits {
+						a.tlDrawerOpen = !a.tlDrawerOpen
+						if a.tlDrawerOpen {
+							a.markStatsDirty()
+						}
+						a.saveTodoViewPrefs()
+					} else {
+						// No room for a side drawer: open the full day timeline instead.
+						a.statsTab = 0
+						a.navigate("stats")
 					}
 				}
 				a.renderShellTimerChip(c, snap, p)
@@ -246,9 +248,7 @@ func (a *App) MainView(c *ui.Context) {
 
 		// Studio body: Collapsible 196px Ocean-Tide Sidebar + Center Workspace + Optional Right Timeline Drawer
 		ui.Row(c).Grow(1).MinHeight(0).FillWidth().Children(func() {
-			if !a.sidebarCollapsed {
-				a.renderSidebar(c, snap, p)
-			}
+			a.renderSidebar(c, snap, p, rail)
 
 			// Center unified workspace
 			ui.Column(c).Grow(1).MinHeight(0).MinWidth(0).FillHeight().Background(p.Paper).Clip().Children(func() {
@@ -267,7 +267,7 @@ func (a *App) MainView(c *ui.Context) {
 			})
 
 			// Optional right-hand live Today Timeline drawer
-			if a.tlDrawerOpen && a.activeOverlay == "" {
+			if a.tlDrawerOpen && drawerFits && a.activeOverlay == "" {
 				a.renderRightTimelineDrawer(c, p)
 			}
 		})
@@ -275,21 +275,76 @@ func (a *App) MainView(c *ui.Context) {
 
 	a.renderImportModal(c, p)
 	a.renderClearAlert(c)
+	// The Focus Clock page draws its own completion overlay; every other page gets it as a modal
+	// so a finished round is never silent while the user is on Today / Stats / Settings.
+	if a.timerDoneVisible && a.timerDoneEv != nil && a.activeOverlay != "focus" {
+		ui.Modal(c, &a.timerDoneVisible, func() {
+			ui.Column(c.Key("shell-done-card")).Width(290).Center().Gap(10).Children(func() {
+				a.renderTimerDoneBody(c, p, "知道了")
+			})
+		})
+	}
 }
 
-func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
+const (
+	sidebarWidth   = 196
+	railWidth      = 56
+	railBelowWidth = 900  // below this window width the sidebar always shows as the icon rail
+	drawerMinWidth = 1000 // the 280px timeline drawer needs at least this window width
+)
+
+// navPages lists the main-window pages in sidebar order; Ctrl+1..5 follow the same order.
+var navPages = []struct {
+	ID    string
+	Label string
+	Icon  *ui.SVG
+}{
+	{"", "今日事", IconList},
+	{"focus", "专注钟", IconTimer},
+	{"calendar", "日历", IconCalendar},
+	{"stats", "统计", IconChart},
+	{"settings", "设置与备份", IconSettings},
+}
+
+// handleGlobalShortcuts wires the keyboard-first paths: Ctrl+1..5 pages, Ctrl+N new task,
+// Space start / pause. Text inputs and focused buttons consume their own keys first.
+func (a *App) handleGlobalShortcuts(c *ui.Context, snap timer.Snapshot) {
+	if a.overlayOpen() {
+		return
+	}
+	for i, pg := range navPages {
+		if c.Shortcut(ui.Ctrl, ui.Key1+ui.Key(i)) {
+			a.navigate(pg.ID)
+		}
+	}
+	if c.Shortcut(ui.Ctrl, ui.KeyN) {
+		a.navigate("")
+		a.Todo.GoToday()
+		a.focusNewTask = true
+	}
+	if c.Shortcut(0, ui.KeySpace) && !c.ShortcutRepeated() {
+		a.primaryTimerAction(snap, a.activeOverlay == "")
+	}
+}
+
+func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette, rail bool) {
 	_, doneCount, totalCount := a.todayTideLevel(snap)
 	openCount := totalCount - doneCount
 
-	// Clean minimalist studio sidebar matching the quiet 526Hz paper-and-ocean aesthetic
-	ui.Column(c).Width(196).FillHeight().Background(p.Surface).
+	if rail {
+		a.renderSidebarRail(c, snap, openCount, p)
+		return
+	}
+
+	// Clean minimalist studio sidebar matching the quiet paper-and-ocean aesthetic
+	ui.Column(c).Width(sidebarWidth).FillHeight().Background(p.Surface).
 		BorderWidth(0, 1, 0, 0).BorderColor(p.Line).
 		Padding(14, 10, 12, 10).Gap(5).Children(func() {
 
-			navItem := func(id, label string, icon *ui.SVG, badge string, badgeLive bool, onClick func()) {
+			navItem := func(id, label string, icon *ui.SVG, badge string, badgeLive bool, hint string) {
 				active := a.activeOverlay == id
 				item := ui.ButtonBase(c.Key("nav-"+id)).FillWidth().Height(38).Radius(10).
-					Padding(0, 11).Transition(cardFadeFast).Cursor(ui.CursorPointer).Label(label)
+					Padding(0, 11).Transition(cardFadeFast).Cursor(ui.CursorPointer).Label(label).Tooltip(hint)
 				hov := item.Hovered()
 				if active {
 					item.Background(p.Paper).Border(1, p.Line).Shadow(0, 2, 8, 0, p.CardShadow)
@@ -307,7 +362,7 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
 							col = p.Navy
 						}
 						ui.Icon(c, icon).Size(16.5, 16.5).TextColor(col)
-						ui.Text(c, label).FontSize(13.5).FontWeight(weight).TextColor(col).Grow(1).SingleLine()
+						ui.Text(c, label).FontSize(14).FontWeight(weight).TextColor(col).Grow(1).SingleLine()
 						if badge != "" {
 							bg, fg := p.CreditBg, p.Ink2
 							if badgeLive {
@@ -320,7 +375,7 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
 					})
 				})
 				if item.Clicked() {
-					onClick()
+					a.navigate(id)
 				}
 			}
 
@@ -333,34 +388,21 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
 				focusBadge = dateutil.FmtClock(snap.Timer.LeftSec)
 			}
 
-			navItem("", "今日事", IconList, openBadge, false, func() {
-				a.activeOverlay = ""
-			})
-			navItem("focus", "专注钟", IconTimer, focusBadge, snap.Timer.Running, func() {
-				a.activeOverlay = "focus"
-			})
-			navItem("calendar", "日历", IconCalendar, "", false, func() {
-				a.activeOverlay = "calendar"
-			})
-			navItem("stats", "统计", IconChart, "", false, func() {
-				a.tlDayKey = a.Todo.TodayKey()
-				a.tlScrolledDay = ""
-				a.statsShowAllRecs = false
-				a.markStatsDirty()
-				a.activeOverlay = "stats"
-			})
-			navItem("settings", "设置与备份", IconSettings, "", false, func() {
-				a.loadTemplateDrafts()
-				a.mu.Lock()
-				a.recoveryDirty = true
-				a.mu.Unlock()
-				a.activeOverlay = "settings"
-			})
+			for i, pg := range navPages {
+				badge, live := "", false
+				switch pg.ID {
+				case "":
+					badge = openBadge
+				case "focus":
+					badge, live = focusBadge, snap.Timer.Running
+				}
+				navItem(pg.ID, pg.Label, pg.Icon, badge, live, fmt.Sprintf("Ctrl+%d", i+1))
+			}
 
 			ui.Spacer(c)
 
 			// Crisp "今日专注" summary card anchored cleanly at the bottom of the sidebar
-			ui.Column(c).FillWidth().Padding(12, 11).Radius(13).
+			ui.Column(c.Key("sidebar-summary")).FillWidth().Padding(12, 11).Radius(13).
 				Background(p.Paper).Border(1, p.Line).
 				Shadow(0, 4, 14, 0, p.CardShadow).Gap(8).Children(func() {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
@@ -371,40 +413,60 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
 					ui.Textf(c, "%d分 · %d轮", snap.Stats.Minutes, snap.Stats.Rounds).
 						Font(FontMono).FontSize(11).TextColor(p.Ink2).Grow(1).SingleLine()
 				})
-				ui.Row(c).FillWidth().Gap(5).Children(func() {
-					pipB := ui.ButtonBase(c).Grow(1).Height(30).Radius(8).Center().
-						Background(p.AccentSoft).Border(1, p.AccentVeil).Transition(colorFadeFast).
-						Cursor(ui.CursorPointer).Label("画中画").Tooltip("弹出置顶字符海小窗")
-					if pipB.Hovered() {
-						pipB.Border(1, p.Blue)
-					}
-					pipB.Children(func() {
-						ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-							ui.Icon(c, IconPiP).Size(13, 13).TextColor(p.BlueDeep)
-							ui.Text(c, "画中画").FontSize(11.5).FontWeight(700).TextColor(p.BlueDeep).SingleLine()
-						})
-					})
-					if pipB.Clicked() {
-						a.SetTimerMiniPill(false)
-						a.OpenTimerWindow()
-					}
-
-					pillB := ui.ButtonBase(c).Size(30, 30).Radius(8).Center().
-						Background(p.Surface).Border(1, p.Line).Transition(colorFadeFast).
-						Cursor(ui.CursorPointer).Label("侧栏灵动条").Tooltip("弹出悬浮灵动条")
-					if pillB.Hovered() {
-						pillB.Border(1, p.Blue)
-					}
-					pillB.Children(func() {
-						ui.Icon(c, IconCompact).Size(13, 13).TextColor(p.Ink2)
-					})
-					if pillB.Clicked() {
-						a.OpenTimerWindow()
-						a.SetTimerMiniPill(true)
-					}
-				})
+				// Pure at-a-glance summary: the pop-out windows are opened from the Focus Clock toolbar.
+				ratio := 0.0
+				if totalCount > 0 {
+					ratio = float64(doneCount) / float64(totalCount)
+				}
+				ui.Progress(c, ratio).FillWidth().Height(4)
 			})
 		})
+}
+
+// renderSidebarRail is the 56px icon-only sidebar: navigation stays one click away when the sidebar
+// is collapsed or the window is too narrow for the full one.
+func (a *App) renderSidebarRail(c *ui.Context, snap timer.Snapshot, openCount int, p Palette) {
+	ui.Column(c).Width(railWidth).FillHeight().Background(p.Surface).
+		BorderWidth(0, 1, 0, 0).BorderColor(p.Line).
+		Padding(14, 0, 12, 0).Gap(5).AlignItems(ui.Center).Children(func() {
+		for i, pg := range navPages {
+			active := a.activeOverlay == pg.ID
+			item := ui.ButtonBase(c.Key("rail-"+pg.ID)).Size(38, 38).Radius(10).Center().
+				Transition(cardFadeFast).Cursor(ui.CursorPointer).Label(pg.Label).
+				Tooltip(fmt.Sprintf("%s · Ctrl+%d", pg.Label, i+1))
+			hov := item.Hovered()
+			if active {
+				item.Background(p.Paper).Border(1, p.Line).Shadow(0, 2, 8, 0, p.CardShadow)
+			} else if hov {
+				item.Background(p.AccentSoft)
+			}
+			// A small dot carries what the full sidebar shows as a badge: open tasks / a live round.
+			dot := ui.Transparent
+			switch {
+			case pg.ID == "focus" && snap.Timer.Running:
+				dot = p.Success
+			case pg.ID == "focus" && snap.Timer.Paused:
+				dot = p.Warn
+			case pg.ID == "" && openCount > 0:
+				dot = p.Blue
+			}
+			item.Children(func() {
+				col := p.Ink2
+				if active {
+					col = p.BlueDeep
+				} else if hov {
+					col = p.Navy
+				}
+				ui.Icon(c, pg.Icon).Size(17, 17).TextColor(col)
+				if dot != ui.Transparent {
+					ui.Box(c).Absolute().Top(6).Right(6).Size(6, 6).Radius(999).Background(dot)
+				}
+			})
+			if item.Clicked() {
+				a.navigate(pg.ID)
+			}
+		}
+	})
 }
 
 func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {
@@ -420,12 +482,13 @@ func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {
 		Transition(drawerTransition).Gap(12).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "今日时间轴").FontSize(15).FontWeight(700).TextColor(p.Navy)
-				ui.Textf(c, "共 %d 段 · %d 分钟", len(blocks), totalM).Font(FontMono).FontSize(11.5).TextColor(p.Ink3)
+				ui.Text(c, "今日时间轴").FontSize(16).FontWeight(700).TextColor(p.Navy)
+				ui.Textf(c, "共 %d 段 · %d 分钟", len(blocks), totalM).Font(FontMono).FontSize(12).TextColor(p.Ink3)
 			})
 			cls := iconBtn(c, IconClose, "收起时间轴", "收起", p).Size(28, 28)
 			if cls.Clicked() {
 				a.tlDrawerOpen = false
+				a.saveTodoViewPrefs()
 			}
 		})
 
@@ -435,8 +498,8 @@ func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {
 					ui.Box(c).Size(140, 42).Draw(func(pt *ui.Painter, r ui.Rect) {
 						a.miniSea.DrawCalmWave(pt, r, p.Dark)
 					})
-					ui.Text(c, "今天还没有专注时段").FontSize(12.5).FontWeight(600).TextColor(p.Ink3)
-					ui.Text(c, "进入专注钟或点击下方补录").FontSize(11.5).TextColor(p.Ink4)
+					ui.Text(c, "今天还没有专注时段").FontSize(13).FontWeight(600).TextColor(p.Ink3)
+					ui.Text(c, "进入专注钟或点击下方补录").FontSize(12).TextColor(p.Ink4)
 				})
 				return
 			}
@@ -468,7 +531,7 @@ func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {
 								ui.Spacer(c)
 								ui.Text(c, dur).Font(FontMono).FontSize(11).TextColor(p.Ink3).SingleLine()
 							})
-							ui.Text(c, bCopy.Title).FontSize(12.5).FontWeight(600).TextColor(p.Ink).SingleLine()
+							ui.Text(c, bCopy.Title).FontSize(13).FontWeight(600).TextColor(p.Ink).SingleLine()
 						})
 					})
 				})
@@ -483,7 +546,7 @@ func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {
 			}
 		})
 
-		fullBtn := ui.Button(c, "查看完整 24h 时间轴").FillWidth().Height(34).Radius(9).FontSize(12.5)
+		fullBtn := ui.Button(c, "查看完整 24h 时间轴").FillWidth().Height(34).Radius(9).FontSize(13)
 		if fullBtn.Clicked() {
 			a.tlDayKey = today
 			a.statsTab = 0
@@ -552,8 +615,8 @@ func (a *App) renderShellTimerChip(c *ui.Context, snap timer.Snapshot, p Palette
 				dot.Opacity(0.35 + 0.65*pulse)
 			}
 			if t.Task != nil && t.Task.Title != "" {
-				ui.Text(c, t.Task.Title).FontSize(12.5).FontWeight(700).TextColor(p.Navy).MaxWidth(120).SingleLine()
-				ui.Text(c, "·").FontSize(12.5).TextColor(p.Ink4)
+				ui.Text(c, t.Task.Title).FontSize(13).FontWeight(700).TextColor(p.Navy).MaxWidth(120).SingleLine()
+				ui.Text(c, "·").FontSize(13).TextColor(p.Ink4)
 			}
 			ui.Text(c, statusText).Font(FontMono).FontSize(12).FontWeight(700).TextColor(textCol).SingleLine()
 		})

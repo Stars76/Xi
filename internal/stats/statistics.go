@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/dateutil"
-	"github.com/Stars76/526Hz/internal/store"
+	"github.com/Stars76/Xi/internal/dateutil"
+	"github.com/Stars76/Xi/internal/store"
 )
 
 const MergeGap = 15 * time.Minute

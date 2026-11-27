@@ -3,22 +3,18 @@ package uiapp
 import (
 	"fmt"
 
-	"github.com/Stars76/526Hz/internal/notes"
-	"github.com/Stars76/526Hz/internal/store"
-	"github.com/Stars76/526Hz/internal/timer"
+	"github.com/Stars76/Xi/internal/notes"
+	"github.com/Stars76/Xi/internal/store"
+	"github.com/Stars76/Xi/internal/timer"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
 func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette) {
 	ui.Column(c).Fill().AlignItems(ui.Center).Background(p.Paper).Children(func() {
-		ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(24, 32, 18, 32).Gap(14).Children(func() {
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(10).Children(func() {
-				back := iconBtn(c, IconLeft, "返回设置", "返回", p)
-				if back.Clicked() {
-					a.activeOverlay = ""
-				}
-				ui.Text(c, "设置与备份").FontSize(24).FontWeight(700).TextColor(p.Navy)
+		ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(PagePadTop, PagePadX, 18, PagePadX).Gap(14).Children(func() {
+			ui.Row(c).FillWidth().Height(40).AlignItems(ui.Center).Gap(10).Children(func() {
+				plainTitle(c, "设置与备份", p)
 			})
 
 			ui.Scroll(c.Key("settings-scroll")).TrackScroll(&a.settingsScrl).Grow(1).MinHeight(0).Padding(4, 6).Gap(18).Children(func() {
@@ -70,6 +66,34 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 
 			ui.Divider(c)
 
+			// Focus clock & reminders: the same preferences as the Focus Clock's quick overlay
+			ui.Column(c).FillWidth().Gap(10).Children(func() {
+				ui.Text(c, "专注与提醒").FontSize(16).FontWeight(700).TextColor(p.Navy)
+				ui.Text(c, "提示音、系统通知、动画与托盘行为；专注钟右上角的快捷设置与这里同步。").FontSize(13).TextColor(p.Ink3)
+				a.renderTimerPrefRows(c, snap, p, 14, false)
+			})
+
+			ui.Divider(c)
+
+			// Keyboard shortcuts reference
+			ui.Column(c).FillWidth().Gap(8).Children(func() {
+				ui.Text(c, "快捷键").FontSize(16).FontWeight(700).TextColor(p.Navy)
+				for _, sc := range [][2]string{
+					{"空格", "开始 / 暂停 / 继续专注"},
+					{"Ctrl+N", "回到今日事并新建任务"},
+					{"Ctrl+1 … Ctrl+5", "切换 今日事 / 专注钟 / 日历 / 统计 / 设置"},
+					{"Esc", "关闭当前浮层或取消编辑"},
+					{"右键任务", "开始专注、加步骤、设闹钟、改标题、删除"},
+				} {
+					ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, sc[0]).Font(FontMono).FontSize(13).FontWeight(600).TextColor(p.BlueDeep).Width(150).SingleLine()
+						ui.Text(c, sc[1]).FontSize(13).TextColor(p.Ink2).Grow(1)
+					})
+				}
+			})
+
+			ui.Divider(c)
+
 			// 2) Daily tasks config
 			ui.Column(c).FillWidth().Gap(8).Children(func() {
 				ui.Text(c, "每日任务").FontSize(16).FontWeight(700).TextColor(p.Navy)
@@ -86,7 +110,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 					drow.Children(func() {
 						if a.editingDid == dt.ID {
 							in := ui.TextInput(c.Key("dted-"+dt.ID), &a.editingDVal).AutoFocus().Grow(1).Label("编辑每日任务")
-							okb := ui.PrimaryButton(c, "保存").Padding(4, 10).FontSize(12)
+							okb := primaryBtn(c, "保存", 12, p).Padding(4, 10)
 							canb := ui.Button(c, "取消").Padding(4, 10).FontSize(12)
 							if in.Submitted() || okb.Clicked() {
 								a.Todo.RenameDaily(dt.ID, a.editingDVal)
@@ -113,7 +137,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 
 				ui.Row(c).FillWidth().Margin(6, 0, 0, 0).Gap(8).Children(func() {
 					di := ui.TextInput(c.Key("daily-new-in"), &a.newDailyDraft).Height(40).FontSize(14).Placeholder("例如：睡前读十分钟书").Grow(1).Label("新每日任务")
-					db := ui.PrimaryButton(c, "添加").Height(40).Padding(0, 16)
+					db := primaryBtn(c, "添加", 13, p).Height(40).Padding(0, 16)
 					if di.Submitted() || db.Clicked() {
 						if a.Todo.AddDaily(a.newDailyDraft) != nil {
 							a.newDailyDraft = ""
@@ -134,7 +158,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 
 				ui.TextArea(c.Key("tpl-ed-"+curKind), &a.tplDraft[a.tplTab]).Font(FontMono).FontSize(12).Height(150).Label("模板内容")
 				ui.Row(c).Gap(8).Children(func() {
-					saveTpl := ui.PrimaryButton(c, "保存模板").Padding(5, 12).FontSize(12)
+					saveTpl := primaryBtn(c, "保存模板", 12, p).Padding(5, 12)
 					if saveTpl.Clicked() {
 						var cur store.ExportTemplate
 						_ = a.Store.GetJSON(store.KeyExportTemplate, &cur)
@@ -198,23 +222,23 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 				ui.Text(c, "数据备份").FontSize(14).FontWeight(600).TextColor(p.Navy)
 				ui.Text(c, "数据完全保存在本地磁盘，零网络上传。导入前会自动生成一份备份。").FontSize(12).TextColor(p.Ink3)
 				ui.Row(c).Gap(8).Wrap().Children(func() {
-					expB := ui.PrimaryButton(c, "导出 JSON 备份").Padding(6, 12).FontSize(12.5)
+					expB := primaryBtn(c, "导出 JSON 备份", 12.5, p).Padding(6, 12)
 					if expB.Clicked() {
 						a.LaunchExportDialog()
 					}
-					impB := ui.Button(c, "从备份导入").Padding(6, 12).FontSize(12.5)
+					impB := ui.Button(c, "从备份导入").Padding(6, 12).FontSize(13)
 					if impB.Clicked() {
 						a.LaunchImportPicker(c)
 					}
-					bakDirB := ui.Button(c, "打开备份文件夹").Padding(6, 12).FontSize(12.5)
+					bakDirB := ui.Button(c, "打开备份文件夹").Padding(6, 12).FontSize(13)
 					if bakDirB.Clicked() {
 						_ = mygo.Shell.OpenPath(a.Store.BackupDir())
 					}
-					logDirB := ui.Button(c, "打开日志").Padding(6, 12).FontSize(12.5)
+					logDirB := ui.Button(c, "打开日志").Padding(6, 12).FontSize(13)
 					if logDirB.Clicked() {
 						mygo.Shell.ShowItemInFolder(a.Log.Path())
 					}
-					clrB := ui.Button(c, "清空全部数据").Padding(6, 12).FontSize(12.5).TextColor(p.Danger)
+					clrB := ui.Button(c, "清空全部数据").Padding(6, 12).FontSize(13).TextColor(p.Danger)
 					if clrB.Clicked() {
 						a.clearAskOpen = true
 					}
@@ -222,7 +246,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 
 				rec := a.recoveryInfo()
 				ui.Column(c).FillWidth().Padding(12, 14).Radius(10).Background(p.Surface).Border(1, p.LineSoft).Gap(4).Children(func() {
-					ui.Textf(c, "版本：526Hz v%s", AppVersion).Font(FontMono).FontSize(11.5).TextColor(p.Ink2)
+					ui.Textf(c, "版本：汐 v%s", AppVersion).Font(FontMono).FontSize(12).TextColor(p.Ink2)
 					ui.Textf(c, "数据文件：%s", a.Store.File()).Font(FontMono).FontSize(11).TextColor(p.Ink3)
 					ui.Textf(c, "备份目录：%s（滚动备份 %d 份 / 损坏保留 %d 份）", a.Store.BackupDir(), len(rec.Backups), len(rec.Corrupt)).Font(FontMono).FontSize(11).TextColor(p.Ink3)
 					ui.Textf(c, "日志文件：%s", a.Log.Path()).Font(FontMono).FontSize(11).TextColor(p.Ink3)
@@ -241,7 +265,7 @@ func (a *App) renderImportModal(c *ui.Context, p Palette) {
 	ui.Modal(c, &a.importOpen, func() {
 		ui.Column(c).Width(380).Gap(10).Children(func() {
 			ui.Text(c, "选择导入方式").FontSize(16).FontWeight(700).TextColor(p.Navy)
-			ui.Text(c, "导入前会自动备份当前数据（可随时从备份目录恢复）。请选择导入方式：").FontSize(12.5).TextColor(p.Ink2)
+			ui.Text(c, "导入前会自动备份当前数据（可随时从备份目录恢复）。请选择导入方式：").FontSize(13).TextColor(p.Ink2)
 			ui.Column(c).Padding(10, 12).Radius(9).Background(p.Surface).Border(1, p.Line).Gap(3).Children(func() {
 				ui.Textf(c, "包含：%d 天 / %d 条任务 / 每日任务 %d 条", s.Days, s.Tasks, s.DailyTemplates).FontSize(12).TextColor(p.Ink)
 				ui.Textf(c, "专注历史：%d 条 · 统计：%d 轮 / %d 分钟", s.HistoryEntries, s.TimerRounds, s.TimerMinutes).FontSize(12).TextColor(p.Ink2)
@@ -255,7 +279,7 @@ func (a *App) renderImportModal(c *ui.Context, p Palette) {
 				if rep.Clicked() {
 					a.applyImportMode(c, "replace")
 				}
-				mrg := ui.PrimaryButton(c, "合并导入")
+				mrg := primaryBtn(c, "合并导入", 13, p)
 				if mrg.Clicked() {
 					a.applyImportMode(c, "merge")
 				}

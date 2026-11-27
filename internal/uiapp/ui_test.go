@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/store"
-	"github.com/Stars76/526Hz/internal/timer"
+	"github.com/Stars76/Xi/internal/store"
+	"github.com/Stars76/Xi/internal/timer"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -121,7 +122,14 @@ func TestTimerViewPlanAndControls(t *testing.T) {
 	if a.Timer.Snapshot().Timer.Running || !tt.HasText("继续") {
 		t.Fatal("expected timer paused and 继续 button visible")
 	}
+	// Resetting an in-progress round needs a confirming second click (it records an abandoned round).
 	if err := tt.Click("重置"); err != nil {
+		t.Fatal(err)
+	}
+	if a.Timer.Snapshot().Timer.Idle || len(a.Timer.History()) != 0 || !tt.HasText("确认放弃") {
+		t.Fatalf("expected first reset click to only arm confirmation, hist=%+v", a.Timer.History())
+	}
+	if err := tt.Click("确认放弃"); err != nil {
 		t.Fatal(err)
 	}
 	if !a.Timer.Snapshot().Timer.Idle || len(a.Timer.History()) != 1 || a.Timer.History()[0].Result != "abandoned" {
@@ -309,8 +317,8 @@ func TestUnifiedFocusStageAndSubtaskSync(t *testing.T) {
 	a.Timer.StartTask(tk.ID, a.Todo.TodayKey(), false)
 
 	tt := ui.NewTester(a.MainView, 1120, 780)
-	if !tt.HasText("今日专注") || !tt.HasText("526") {
-		t.Fatalf("expected 526Hz brand and sidebar focus card, got %v", tt.Texts())
+	if !tt.HasText("今日专注") || !tt.HasText("汐") {
+		t.Fatalf("expected 汐 brand and sidebar focus card, got %v", tt.Texts())
 	}
 
 	// Enter unified Focus Clock inside main window
@@ -436,7 +444,7 @@ func TestSeaScenePresetsEncountersAndYearlyHeatmap(t *testing.T) {
 	if err := tt.Click("海域场景"); err != nil {
 		t.Fatal(err)
 	}
-	if !tt.HasText("场景预设") || !tt.HasText("环境音") || !tt.HasText("526Hz 蓝鲸") || !tt.HasText("海豚") || !tt.HasText("极光") {
+	if !tt.HasText("场景预设") || !tt.HasText("环境音") || !tt.HasText("蓝鲸") || !tt.HasText("海豚") || !tt.HasText("极光") {
 		t.Fatalf("expected presets, ambient noise, and 6-card atlas visible, got %v", tt.Texts())
 	}
 
@@ -527,5 +535,256 @@ func TestDoneGroupFoldAndSharedPiPOcean(t *testing.T) {
 	pip.Frame()
 	if a.stageSea.ActiveEncounterKind(a.now()) != EncounterWhale {
 		t.Fatal("expected PiP TimerView to share stageSea encounter")
+	}
+}
+
+func TestP0FlowFixes(t *testing.T) {
+	a := newUITestApp(t)
+	tt := ui.NewTester(a.MainView, 1060, 780)
+	today := a.Todo.TodayKey()
+
+	// Planning ahead: tomorrow is reachable from Today and accepts new tasks.
+	if err := tt.Click("后一天"); err != nil {
+		t.Fatal(err)
+	}
+	tomorrow := a.Todo.ViewDay()
+	if tomorrow <= today || !tt.HasText("明日") {
+		t.Fatalf("expected to view tomorrow, viewDay=%s today=%s texts=%v", tomorrow, today, tt.Texts())
+	}
+	if err := tt.Click("新任务"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("明天的计划")
+	tt.Key(0, ui.KeyEnter)
+	if got := a.Todo.TasksForDay(tomorrow); len(got) != 1 || got[0].Title != "明天的计划" {
+		t.Fatalf("expected task planned for tomorrow, got %+v", got)
+	}
+	a.Todo.Init() // reload from disk + rollover must leave future tasks in place
+	if got := a.Todo.TasksForDay(tomorrow); len(got) != 1 {
+		t.Fatalf("expected future task to survive reload/rollover, got %+v", got)
+	}
+	if len(a.Todo.TasksForDay(today)) != 0 {
+		t.Fatalf("future task must not leak into today: %+v", a.Todo.TasksForDay(today))
+	}
+	a.Todo.GoToday()
+
+	// Starting from Today with open tasks and nothing bound asks which task the round is for.
+	task := a.Todo.AddTask("写周报")
+	if task == nil {
+		t.Fatal("add task failed")
+	}
+	taskID := task.ID
+	tt.Frame()
+	if err := tt.Click("开始专注"); err != nil {
+		t.Fatal(err)
+	}
+	if a.Timer.Snapshot().Timer.Running || !tt.HasText("这一轮专注做哪件事？") {
+		t.Fatalf("expected bind picker instead of an unbound start, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("专注 写周报"); err != nil {
+		t.Fatal(err)
+	}
+	snap := a.Timer.Snapshot()
+	if !snap.Timer.Running || snap.Timer.Task == nil || snap.Timer.Task.ID != taskID {
+		t.Fatalf("expected round running and bound to picked task, got %+v", snap.Timer)
+	}
+
+	// A round finishing while on Today (not the Focus Clock page) still surfaces the completion card.
+	a.timerDoneEv = &timer.Event{Type: "done", Phase: "focus", PlannedMinutes: 25, Round: 1, TaskID: taskID, TaskTitle: "写周报", Day: today}
+	a.timerDoneVisible = true
+	tt.Frame()
+	if !tt.HasText("专注完成！") {
+		t.Fatalf("expected completion card on Today page, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("知道了"); err != nil {
+		t.Fatal(err)
+	}
+	if a.timerDoneVisible {
+		t.Fatal("expected completion card dismissed")
+	}
+
+	// Reset and verify the task-row focus button starts in one click (no plan-picker detour).
+	a.Timer.Command("reset")
+	a.Timer.Command("reset")
+	if !a.Timer.Snapshot().Timer.Idle {
+		t.Fatal("expected idle timer after reset")
+	}
+	tt.Frame()
+	r, ok := tt.Find("写周报")
+	if !ok {
+		t.Fatalf("task row not rendered, texts=%v", tt.Texts())
+	}
+	tt.Move(r.X+r.W/2, r.Y+r.H/2) // row actions are revealed on hover
+	if err := tt.Click("开始专注 写周报"); err != nil {
+		t.Fatal(err)
+	}
+	snap = a.Timer.Snapshot()
+	if !snap.Timer.Running || snap.Timer.Task == nil || snap.Timer.Task.ID != taskID || a.timerShowSetup {
+		t.Fatalf("expected one-click start bound to task without setup overlay, timer=%+v setup=%v", snap.Timer, a.timerShowSetup)
+	}
+	if a.activeOverlay != "focus" {
+		t.Fatalf("expected to land on Focus Clock, overlay=%q", a.activeOverlay)
+	}
+}
+
+func TestP1KeyboardMenuAndPersistedLayout(t *testing.T) {
+	a := newUITestApp(t)
+	tt := ui.NewTester(a.MainView, 1060, 780)
+
+	// Ctrl+1..5 switch pages in sidebar order.
+	for i, want := range []string{"", "focus", "calendar", "stats", "settings"} {
+		tt.Key(ui.Ctrl, ui.Key1+ui.Key(i))
+		if a.activeOverlay != want {
+			t.Fatalf("Ctrl+%d: expected page %q, got %q", i+1, want, a.activeOverlay)
+		}
+	}
+	// The Settings page now carries the focus-clock preferences and the shortcut reference.
+	if !tt.HasText("专注与提醒") || !tt.HasText("提示音") || !tt.HasText("快捷键") {
+		t.Fatalf("expected timer prefs + shortcuts on settings page, texts=%v", tt.Texts())
+	}
+
+	// Ctrl+N returns to Today with the new-task input focused: typing goes straight into it.
+	tt.Key(ui.Ctrl, ui.KeyN)
+	if a.activeOverlay != "" {
+		t.Fatalf("Ctrl+N should land on Today, got %q", a.activeOverlay)
+	}
+	tt.Type("键盘 建的 任务")
+	tt.Key(0, ui.KeySpace) // Space inside a text input must not start the timer
+	if a.Timer.Snapshot().Timer.Running || a.bindPickOpen {
+		t.Fatal("Space typed into a text input must not trigger the timer shortcut")
+	}
+	tt.Key(0, ui.KeyEnter)
+	tasks := a.Todo.Tasks()
+	if len(tasks) != 1 || tasks[0].Title != "键盘 建的 任务" {
+		t.Fatalf("expected task created from keyboard, got %+v", tasks)
+	}
+
+	// Right-click menu exposes the row actions without hovering.
+	if err := tt.RightClick("键盘 建的 任务"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("添加小步骤") || !tt.HasText("删除任务") {
+		t.Fatalf("expected task context menu, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("修改标题"); err != nil {
+		t.Fatal(err)
+	}
+	if a.editingTaskID != tasks[0].ID {
+		t.Fatal("expected context menu 修改标题 to start inline edit")
+	}
+	tt.Key(0, ui.KeyEscape)
+
+	// Layout toggles persist across restarts.
+	if err := tt.Click("切换侧栏"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("切换今日时间轴侧栏"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Store.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	b := NewApp(AppConfig{UserDataDir: a.Store.Dir(), Now: a.nowFn})
+	if !b.sidebarCollapsed || !b.tlDrawerOpen {
+		t.Fatalf("expected layout restored, sidebarCollapsed=%v tlDrawerOpen=%v", b.sidebarCollapsed, b.tlDrawerOpen)
+	}
+}
+
+func TestP1SpaceShortcutAndFullBindStrip(t *testing.T) {
+	a := newUITestApp(t)
+	tt := ui.NewTester(a.MainView, 1060, 780)
+	for _, title := range []string{"任务一", "任务二", "任务三", "任务四", "任务五"} {
+		a.Todo.AddTask(title)
+	}
+	tt.Frame()
+
+	// Space on Today with nothing bound opens the task picker instead of an unbound start.
+	tt.Key(0, ui.KeySpace)
+	if a.Timer.Snapshot().Timer.Running || !a.bindPickOpen {
+		t.Fatal("expected Space on Today to open the bind picker")
+	}
+	tt.Key(0, ui.KeyEscape)
+
+	// On the Focus Clock, the quick-bind strip can reach every open task, not just the first three.
+	tt.Key(ui.Ctrl, ui.Key2)
+	if tt.HasText("任务一") { // newest first: 任务五/四/三 are shown, 任务一 is hidden
+		t.Fatalf("expected strip collapsed to three tasks, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("展开全部今日任务"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("绑定 任务一"); err != nil {
+		t.Fatal(err)
+	}
+	snap := a.Timer.Snapshot()
+	if !snap.Timer.Running || snap.Timer.Task == nil || snap.Timer.Task.Title != "任务一" {
+		t.Fatalf("expected round bound to the previously unreachable task, got %+v", snap.Timer)
+	}
+
+	// Space toggles pause / resume while a round is active.
+	tt.Key(0, ui.KeySpace)
+	if a.Timer.Snapshot().Timer.Running {
+		t.Fatal("expected Space to pause the running round")
+	}
+	tt.Key(0, ui.KeySpace)
+	if !a.Timer.Snapshot().Timer.Running {
+		t.Fatal("expected Space to resume the paused round")
+	}
+}
+
+func TestP2ResponsiveShellAndYearDetail(t *testing.T) {
+	a := newUITestApp(t)
+	today := a.Todo.TodayKey()
+	// One finished 50-minute round today feeds the year heatmap, month bars and day detail.
+	a.Timer.RestoreHistoryEntries([]store.HistoryEntry{{
+		Day: today, Phase: "focus", Result: "done", PlannedMinutes: 50, ActualMinutes: 50,
+		StartedAt:  a.now().Add(-time.Hour).UTC().Format(time.RFC3339Nano),
+		FinishedAt: a.now().Add(-10 * time.Minute).UTC().Format(time.RFC3339Nano),
+	}})
+	a.markStatsDirty()
+	tt := ui.NewTester(a.MainView, 1060, 780)
+
+	// Wide window: full sidebar with the info-only summary card (pop-outs live on the Focus Clock).
+	if !slices.Contains(tt.Texts(), "今日专注") || tt.HasText("画中画") {
+		t.Fatalf("expected info-only sidebar summary on a wide window, texts=%v", tt.Texts())
+	}
+
+	// Year tab: month bars and the pinned-day detail fill the space under the heatmap.
+	tt.Key(ui.Ctrl, ui.Key4)
+	a.statsTab = 3
+	tt.Frame()
+	if !tt.HasText("月度专注") || !tt.HasText("当日详情") || !tt.HasText(today) {
+		t.Fatalf("expected month bars + day detail on year tab, texts=%v", tt.Texts())
+	}
+	if !tt.HasText("最高 9月 · 50 分钟") {
+		t.Fatalf("expected best-month summary from seeded history, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("查看当日时间轴"); err != nil {
+		t.Fatal(err)
+	}
+	if a.statsTab != 0 || a.tlDayKey != today {
+		t.Fatalf("expected jump to the day timeline, tab=%d day=%s", a.statsTab, a.tlDayKey)
+	}
+
+	// Narrow window: the sidebar folds to an icon rail that still navigates, and the summary card goes away.
+	tt.Key(ui.Ctrl, ui.Key1)
+	tt.SetSize(720, 560)
+	tt.Frame()
+	if slices.Contains(tt.Texts(), "今日专注") { // exact match: the Today status line also mentions 今日专注
+		t.Fatalf("expected sidebar summary hidden in rail mode, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("专注钟"); err != nil {
+		t.Fatal(err)
+	}
+	if a.activeOverlay != "focus" {
+		t.Fatalf("expected rail icon to navigate, overlay=%q", a.activeOverlay)
+	}
+	// No room for the side drawer: the timeline button opens the full day timeline instead.
+	tt.Key(ui.Ctrl, ui.Key1)
+	if err := tt.Click("切换今日时间轴侧栏"); err != nil {
+		t.Fatal(err)
+	}
+	if a.tlDrawerOpen || a.activeOverlay != "stats" || a.statsTab != 0 {
+		t.Fatalf("expected narrow timeline button to open stats day tab, drawer=%v overlay=%q", a.tlDrawerOpen, a.activeOverlay)
 	}
 }

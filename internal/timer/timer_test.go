@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/store"
+	"github.com/Stars76/Xi/internal/store"
 )
 
 type fakeClock struct {
@@ -26,6 +26,8 @@ func newTestEnv(t *testing.T, clk *fakeClock) (*store.Store, *Engine, *[]Event, 
 	t.Helper()
 	dir := t.TempDir()
 	st := store.NewStore(dir, store.NewLogger(filepath.Join(dir, "logs")))
+	// Cancel the debounced disk flush before TempDir cleanup runs, otherwise a late write races the removal.
+	t.Cleanup(func() { _ = st.Flush() })
 	st.Load()
 	var events []Event
 	var notifs [][2]string
@@ -115,6 +117,7 @@ func TestClockJumpMidnightAndRestartRecovery(t *testing.T) {
 	clk.advance(30 * time.Minute)
 
 	st2 := store.NewStore(st.Dir(), nil)
+	t.Cleanup(func() { _ = st2.Flush() })
 	st2.Load()
 	var events2 []Event
 	notifsBefore := len(*notifs)

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/dateutil"
-	"github.com/Stars76/526Hz/internal/store"
-	"github.com/Stars76/526Hz/internal/timer"
+	"github.com/Stars76/Xi/internal/dateutil"
+	"github.com/Stars76/Xi/internal/store"
+	"github.com/Stars76/Xi/internal/timer"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -112,6 +112,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 	viewDay := a.Todo.ViewDay()
 	today := a.Todo.TodayKey()
 	isToday := viewDay == today
+	isFuture := viewDay > today
 	tasks := a.Todo.Tasks()
 	totals := a.taskTotals()
 
@@ -158,9 +159,9 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 	ui.Column(c).Fill().AlignItems(ui.Center).Background(p.Paper).Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(18, 30, 0, 30).Children(func() {
 			if isToday {
-				// 526Hz EDITORIAL TIDE-RIBBON CARD:
+				// EDITORIAL TIDE-RIBBON CARD:
 				// Upper paper deck = pure razor-sharp typography, countdown & controls (zero glyphs behind text).
-				// Bottom 32px edge = restrained whisper-soft · ~ ∿ 526Hz acoustic tide ribbon.
+				// Bottom 32px edge = the tide ribbon, a miniature of the Focus Clock sea (~ ≈ ≋).
 				t := snap.Timer
 				prefs := snap.Prefs
 				ui.Column(c.Key("today-ocean-hero")).FillWidth().Height(116).Margin(0, 0, 14, 0).Radius(16).
@@ -182,9 +183,12 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 										a.Todo.ShiftView(-1)
 									}
 									lbl := dateutil.DayLabel(viewDay, a.now().Year()) + " · 今天"
-									ui.Text(c, lbl).Font(FontMono).FontSize(10.5).FontWeight(600).TextColor(p.Ink2).Padding(0, 4).SingleLine()
-									next := iconBtn(c, IconRight, "后一天", "后一天", p).Size(20, 20).Disabled(true)
-									_ = next
+									ui.Text(c, lbl).Font(FontMono).FontSize(11).FontWeight(600).TextColor(p.Ink2).Padding(0, 4).SingleLine()
+									next := iconBtn(c, IconRight, "后一天", "提前安排明天", p).Size(20, 20)
+									if next.Clicked() {
+										a.bindPickOpen = false
+										a.Todo.ShiftView(1)
+									}
 								})
 							})
 
@@ -198,7 +202,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 							} else if t.Paused {
 								statusLine = fmt.Sprintf("已暂停 · 今日专注 %d 分钟 · %d/%d 完成", snap.Stats.Minutes, doneCount, totalCount)
 							}
-							ui.Text(c, statusLine).FontSize(12.5).TextColor(p.Ink3).SingleLine()
+							ui.Text(c, statusLine).FontSize(13).TextColor(p.Ink3).SingleLine()
 						})
 
 						// Right: pure countdown on paper + clean action cluster
@@ -215,13 +219,11 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 							} else if t.Paused {
 								ppLbl = "继续专注"
 							}
-							ppBtn := sheenPrimaryBtn(c, ppLbl, 32, p).Padding(0, 14).Radius(9)
+							ppBtn := primaryBtn(c, ppLbl, 14.5, p)
+							ppBtn.Tooltip("空格")
 							if ppBtn.Clicked() {
-								if t.Running {
-									a.Timer.Command("pause")
-								} else {
-									a.Timer.Command("start")
-								}
+								// Asks which task the round is for when nothing is bound, so history is not filled with unbound records.
+								a.primaryTimerAction(snap, true)
 							}
 
 							stageBtn := ui.ButtonBase(c).Height(32).Padding(0, 11).Radius(9).
@@ -231,7 +233,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 								stageBtn.Background(p.AccentSoft).Border(1, p.Blue)
 							}
 							stageBtn.Children(func() {
-								ui.Text(c, "专注钟 →").FontSize(12.5).FontWeight(600).TextColor(p.Navy).SingleLine()
+								ui.Text(c, "专注钟 →").FontSize(13).FontWeight(600).TextColor(p.Navy).SingleLine()
 							})
 							if stageBtn.Clicked() {
 								a.activeOverlay = "focus"
@@ -239,7 +241,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 						})
 					})
 
-					// Bottom 32px whisper-soft 526Hz acoustic tide ribbon
+					// Bottom 32px tide ribbon: the same glyph sea in miniature
 					ribbon := ui.Box(c.Key("today-tide-ribbon")).FillWidth().Height(32).Cursor(ui.CursorPointer)
 					rpx, rpy, rpIn := ribbon.PointerPosition()
 					if ribbon.Clicked() {
@@ -265,8 +267,14 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 				// Clean historical day header (no live Focus Ocean on past dates)
 				ui.Row(c).FillWidth().Padding(14, 18).Margin(0, 0, 14, 0).Radius(14).
 					Background(p.Surface).Border(1, p.Line).AlignItems(ui.Center).Gap(12).Children(func() {
+					dayWord := "往日"
+					if viewDay == dateutil.ShiftDay(today, 1) {
+						dayWord = "明日"
+					} else if isFuture {
+						dayWord = "来日"
+					}
 					ui.RichText(c,
-						ui.Span{Text: "往日", Weight: 800, Size: 26, Color: p.Navy},
+						ui.Span{Text: dayWord, Weight: 800, Size: 26, Color: p.Navy},
 						ui.Span{Text: "事", Weight: 800, Size: 26, Color: p.Blue},
 					).LetterSpacing(-0.5)
 
@@ -277,8 +285,8 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 							a.Todo.ShiftView(-1)
 						}
 						lbl := dateutil.DayLabel(viewDay, a.now().Year())
-						ui.Text(c, lbl).Font(FontMono).FontSize(11.5).FontWeight(700).TextColor(p.Navy).Padding(0, 5).SingleLine()
-						next := iconBtn(c, IconRight, "后一天", "后一天", p).Size(24, 24).Disabled(viewDay >= today)
+						ui.Text(c, lbl).Font(FontMono).FontSize(12).FontWeight(700).TextColor(p.Navy).Padding(0, 5).SingleLine()
+						next := iconBtn(c, IconRight, "后一天", "后一天", p).Size(24, 24)
 						if next.Clicked() {
 							a.Todo.ShiftView(1)
 						}
@@ -295,18 +303,34 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 					}
 
 					ui.Spacer(c)
-					ui.Textf(c, "完成 %d/%d 项 · 专注 %d 分钟", doneCount, totalCount, dayFocusMin).
-						FontSize(12.5).FontWeight(600).TextColor(p.Ink3).SingleLine()
+					dayLine := fmt.Sprintf("完成 %d/%d 项 · 专注 %d 分钟", doneCount, totalCount, dayFocusMin)
+					if isFuture {
+						dayLine = fmt.Sprintf("已安排 %d 项", totalCount)
+					}
+					ui.Text(c, dayLine).FontSize(13).FontWeight(600).TextColor(p.Ink3).SingleLine()
 				})
 			}
 
-			// Add task row (today only, supports smart trailing/leading HH:MM alarm)
-			if isToday {
+			// Bind-a-task picker: shown when a round is started from Today without a bound task
+			if isToday && a.bindPickOpen {
+				a.renderBindPicker(c, openTasks, p)
+			}
+
+			// Add task row (today and future days, supports smart trailing/leading HH:MM alarm)
+			if isToday || isFuture {
+				placeholder := "添加新任务（末尾加 16:30 可设闹钟）"
+				if isFuture {
+					placeholder = "提前安排这一天的任务（末尾加 16:30 可设闹钟）"
+				}
 				ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Margin(0, 0, 16, 0).Children(func() {
 					in := ui.TextInput(c.Key("add-task-input"), &a.newTaskDraft).
-						Height(44).FontSize(15).Padding(10, 14).Radius(11).
-						Background(p.Surface2).Placeholder("添加新任务（末尾加 16:30 可设闹钟）").Label("新任务").Grow(1)
-					addBtn := sheenPrimaryBtn(c, "添加", 44, p)
+						Height(44).FontSize(16).Padding(10, 14).Radius(11).
+						Background(p.Surface2).Placeholder(placeholder).Label("新任务").Grow(1).Tooltip("Ctrl+N")
+					if a.focusNewTask {
+						a.focusNewTask = false
+						in.Focus()
+					}
+					addBtn := primaryBtn(c, "添加", 14.5, p).Height(44).Padding(0, 18).Radius(10)
 					if in.Submitted() || addBtn.Clicked() {
 						if a.addTaskSmart(c, a.newTaskDraft) {
 							a.newTaskDraft = ""
@@ -316,7 +340,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 			} else {
 				ui.Row(c).FillWidth().Padding(10, 14).Margin(0, 0, 14, 0).Radius(10).Background(p.Surface).Border(1, p.LineSoft).Children(func() {
 					ui.Text(c, "正在查看历史日期：支持勾选完成、修改标题与步骤；新增任务与排序请在「今天」进行。").
-						FontSize(12.5).TextColor(p.Ink3)
+						FontSize(13).TextColor(p.Ink3)
 				})
 			}
 
@@ -353,6 +377,20 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 					a.onlyOpen = !a.onlyOpen
 					a.saveTodoViewPrefs()
 				}
+				if !isFuture && totalCount > 0 {
+					rvBtn := ui.ButtonBase(c).Padding(4, 10).Radius(7).Cursor(ui.CursorPointer).
+						Background(p.Paper).Border(1, p.Line).Transition(colorFadeFast).
+						Label("复制当日复盘").Tooltip("复制这一天的 Markdown 复盘到剪贴板")
+					if rvBtn.Hovered() {
+						rvBtn.Border(1, p.Blue)
+					}
+					rvBtn.Children(func() {
+						ui.Text(c, "复制复盘").FontSize(12).FontWeight(600).TextColor(p.Ink3).SingleLine()
+					})
+					if rvBtn.Clicked() {
+						a.copyDailyReview(c, viewDay)
+					}
+				}
 			})
 
 			// Task list (open tasks on top, completed tasks folded neatly into a collapsible bottom section)
@@ -369,12 +407,15 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 						if a.onlyOpen && len(tasks) > 0 {
 							title = "已完成全部任务"
 							detail = "今天安排的任务已全部完成"
+						} else if isFuture {
+							title = "这一天还没有安排"
+							detail = "在上方输入任务，提前规划"
 						} else if !isToday {
 							title = "当日暂无任务"
 							detail = "切换日期或点击「回今天」"
 						}
 						ui.Text(c, title).FontSize(18).FontWeight(700).TextColor(p.Navy)
-						ui.Text(c, detail).FontSize(12.5).TextColor(p.Ink3)
+						ui.Text(c, detail).FontSize(13).TextColor(p.Ink3)
 					})
 					return
 				}
@@ -387,7 +428,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 					ui.Row(c).FillWidth().Padding(14, 16).Margin(2, 0, 8, 0).Radius(12).
 						Background(p.Surface).Border(1, p.LineSoft).Gap(8).AlignItems(ui.Center).Children(func() {
 						ui.Icon(c, IconCheck).Size(15, 15).TextColor(p.Success)
-						ui.Text(c, "已完成今日全部待办").FontSize(13.5).FontWeight(600).TextColor(p.Navy)
+						ui.Text(c, "已完成今日全部待办").FontSize(14).FontWeight(600).TextColor(p.Navy)
 					})
 				}
 
@@ -405,13 +446,14 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 					hdr.Children(func() {
 						ui.Row(c).Fill().Gap(7).AlignItems(ui.Center).Children(func() {
 							ui.Icon(c, toggleIcon).Size(12, 12).TextColor(p.Ink3)
-							ui.Text(c, "已完成").FontSize(12.5).FontWeight(700).TextColor(p.Ink3).SingleLine()
+							ui.Text(c, "已完成").FontSize(13).FontWeight(700).TextColor(p.Ink3).SingleLine()
 							badgeChip(c, fmt.Sprintf("%d", len(doneTasks)), p.Surface, p.Ink3, p.LineSoft)
 							ui.Box(c).Grow(1).Height(1).Background(p.LineSoft)
 						})
 					})
 					if hdr.Clicked() {
 						a.doneGroupOpen = !a.doneGroupOpen
+						a.saveTodoViewPrefs()
 					}
 					if a.doneGroupOpen {
 						for idx, task := range doneTasks {
@@ -420,6 +462,52 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 					}
 				}
 			})
+		})
+	})
+}
+
+// renderBindPicker lets the user pick which open task the next focus round belongs to (or skip binding).
+func (a *App) renderBindPicker(c *ui.Context, openTasks []store.Task, p Palette) {
+	ui.Column(c.Key("bind-picker")).FillWidth().Padding(12, 16).Margin(0, 0, 14, 0).Radius(13).
+		Background(p.AccentSoft).Border(1, p.AccentVeil).Transition(calCardMotion).Gap(9).Children(func() {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+			ui.Text(c, "这一轮专注做哪件事？").FontSize(14).FontWeight(700).TextColor(p.Navy).Grow(1).SingleLine()
+			skip := ui.ButtonBase(c).Height(28).Padding(0, 11).Radius(8).Background(p.Paper).Border(1, p.Line).
+				Transition(colorFadeFast).Cursor(ui.CursorPointer).Label("不绑定任务直接开始")
+			if skip.Hovered() {
+				skip.Border(1, p.Blue)
+			}
+			skip.Children(func() {
+				ui.Text(c, "不绑定，直接开始").FontSize(12).FontWeight(600).TextColor(p.Ink2).SingleLine()
+			})
+			if skip.Clicked() {
+				a.bindPickOpen = false
+				a.Timer.Command("start")
+			}
+			cls := iconBtn(c, IconClose, "取消选择任务", "取消", p).Size(26, 26)
+			if cls.Clicked() {
+				a.bindPickOpen = false
+			}
+		})
+		ui.Row(c).FillWidth().Gap(7).Wrap().Children(func() {
+			for _, tk := range openTasks {
+				tCopy := tk
+				pill := ui.ButtonBase(c.Key("bindpick-"+tk.ID)).Height(30).Padding(0, 12).Radius(999).
+					Background(p.Paper).Border(1, p.Line).Transition(colorFadeFast).
+					Cursor(ui.CursorPointer).Label("专注 " + tk.Title)
+				if pill.Hovered() {
+					pill.Border(1, p.Blue)
+				}
+				pill.Children(func() {
+					ui.Text(c, tk.Title).FontSize(13).FontWeight(600).TextColor(p.Ink).MaxWidth(220).SingleLine()
+				})
+				if pill.Clicked() {
+					a.bindPickOpen = false
+					if res := a.Timer.StartTask(tCopy.ID, a.Todo.TodayKey(), false); !res.OK {
+						c.Toast(res.Error)
+					}
+				}
+			}
 		})
 	})
 }
@@ -450,7 +538,8 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 		row.Background(p.AccentSoft)
 	}
 
-	if isToday {
+	canSort := viewDay >= a.Todo.TodayKey()
+	if canSort {
 		if _, over := ui.DragOver[string](row); over {
 			row.Border(1.5, p.Blue)
 		}
@@ -460,6 +549,65 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 	}
 
 	showActs := hovered || isCurrentFocus || a.alarmTaskID == task.ID || a.subAddTaskID == task.ID || a.editingTaskID == task.ID
+	canFocus := isToday && !task.Done
+
+	toggleSubAdd := func() {
+		if a.subAddTaskID == task.ID {
+			a.subAddTaskID = ""
+		} else {
+			a.subAddTaskID = task.ID
+			a.subAddDraft = ""
+			delete(a.collapsed, task.ID)
+		}
+	}
+	toggleAlarm := func() {
+		if a.alarmTaskID == task.ID {
+			a.alarmTaskID = ""
+		} else {
+			a.alarmTaskID = task.ID
+			a.alarmInputStr = task.Alarm
+		}
+	}
+	startEdit := func() {
+		a.editingTaskID = task.ID
+		a.editingTaskVal = task.Title
+	}
+	deleteTask := func() {
+		removed, rIdx, ok := a.Todo.DeleteTask(task.ID)
+		if !ok {
+			return
+		}
+		a.lastUndoTask = &removed
+		a.lastUndoIndex = rIdx
+		a.markStatsDirty()
+		c.ToastAction("已删除任务", "撤销", func() {
+			if a.lastUndoTask != nil {
+				a.Todo.RestoreTask(*a.lastUndoTask, a.lastUndoIndex)
+				a.lastUndoTask = nil
+				a.markStatsDirty()
+			}
+		})
+	}
+
+	// Right-click mirrors the hover action bar so every action is discoverable without hovering.
+	row.PopoverMenu(func(m *ui.Menu) {
+		if canFocus && m.Item("开始专注").Chosen() {
+			a.StartTaskFocus(c, task)
+		}
+		if m.Item("添加小步骤").Chosen() {
+			toggleSubAdd()
+		}
+		if m.Item("设置闹钟").Chosen() {
+			toggleAlarm()
+		}
+		if m.Item("修改标题").Chosen() {
+			startEdit()
+		}
+		m.Separator()
+		if m.Item("删除任务").Chosen() {
+			deleteTask()
+		}
+	})
 
 	row.Children(func() {
 		// Main task head row
@@ -487,8 +635,8 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 			// Title or inline edit
 			if a.editingTaskID == task.ID {
 				ed := ui.TextInput(c.Key("edit-task-"+task.ID), &a.editingTaskVal).FontSize(16).AutoFocus().Grow(1).Label("修改任务标题")
-				saveEd := ui.PrimaryButton(c, "保存").Padding(5, 12).FontSize(12.5)
-				cancelEd := ui.Button(c, "取消").Padding(5, 12).FontSize(12.5)
+				saveEd := primaryBtn(c, "保存", 12.5, p).Padding(5, 12)
+				cancelEd := ui.Button(c, "取消").Padding(5, 12).FontSize(13)
 				if ed.Submitted() || saveEd.Clicked() {
 					a.Todo.SetTaskTitle(task.ID, a.editingTaskVal)
 					a.editingTaskID = ""
@@ -496,7 +644,7 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 					a.editingTaskID = ""
 				}
 			} else {
-				titleEl := ui.Text(c, task.Title).FontSize(16.5).FontWeight(600).Grow(1).SingleLine()
+				titleEl := ui.Text(c, task.Title).FontSize(16).FontWeight(600).Grow(1).SingleLine()
 				if task.Done {
 					titleEl.FontWeight(500).TextColor(p.Ink3).Strikethrough()
 				} else if isCurrentFocus {
@@ -573,29 +721,24 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 							})
 						})
 						if alBadge.Clicked() {
-							if a.alarmTaskID == task.ID {
-								a.alarmTaskID = ""
-							} else {
-								a.alarmTaskID = task.ID
-								a.alarmInputStr = task.Alarm
-							}
+							toggleAlarm()
 						}
 					}
 				})
 			}
 
-			// Hover-revealed action bar + drag handle
-			if showActs && a.editingTaskID != task.ID {
+			// Start-focus stays visible on every open task today; the rest of the bar is revealed on hover
+			if (showActs || canFocus) && a.editingTaskID != task.ID {
 				ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-					if isToday {
+					if showActs && canSort {
 						grip := ui.Box(c.Key("drag-"+task.ID)).Size(24, 28).Radius(6).Center().
 							Cursor(ui.CursorGrab).Tooltip("拖动排序").Drag(task.ID)
 						grip.Children(func() {
 							ui.Icon(c, IconMove).Size(14, 14).TextColor(p.Ink4)
 						})
 					}
-					if isToday && !task.Done {
-						tip := "进入专注钟"
+					if canFocus {
+						tip := "开始专注"
 						if isCurrentFocus {
 							tip = "回到本轮专注钟"
 						}
@@ -607,45 +750,24 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 							a.StartTaskFocus(c, task)
 						}
 					}
+					if !showActs {
+						return
+					}
 					subBtn := iconBtn(c, IconAdd, "加步骤 "+task.Title, "添加小步骤", p).Size(28, 28)
 					if subBtn.Clicked() {
-						if a.subAddTaskID == task.ID {
-							a.subAddTaskID = ""
-						} else {
-							a.subAddTaskID = task.ID
-							a.subAddDraft = ""
-							delete(a.collapsed, task.ID)
-						}
+						toggleSubAdd()
 					}
 					alBtn := iconBtn(c, IconAlarm, "闹钟 "+task.Title, "设置闹钟", p).Size(28, 28)
 					if alBtn.Clicked() {
-						if a.alarmTaskID == task.ID {
-							a.alarmTaskID = ""
-						} else {
-							a.alarmTaskID = task.ID
-							a.alarmInputStr = task.Alarm
-						}
+						toggleAlarm()
 					}
 					edBtn := iconBtn(c, IconEdit, "修改 "+task.Title, "修改标题", p).Size(28, 28)
 					if edBtn.Clicked() {
-						a.editingTaskID = task.ID
-						a.editingTaskVal = task.Title
+						startEdit()
 					}
 					delBtn := iconBtn(c, IconDelete, "删除 "+task.Title, "删除任务", p).Size(28, 28)
 					if delBtn.Clicked() {
-						removed, rIdx, ok := a.Todo.DeleteTask(task.ID)
-						if ok {
-							a.lastUndoTask = &removed
-							a.lastUndoIndex = rIdx
-							a.markStatsDirty()
-							c.ToastAction("已删除任务", "撤销", func() {
-								if a.lastUndoTask != nil {
-									a.Todo.RestoreTask(*a.lastUndoTask, a.lastUndoIndex)
-									a.lastUndoTask = nil
-									a.markStatsDirty()
-								}
-							})
-						}
+						deleteTask()
 					}
 				})
 			}
@@ -657,7 +779,7 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 				Border(1, p.AccentVeil).Shadow(0, 2, 8, 0, p.CardShadow).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "闹钟时刻").FontSize(12).TextColor(p.Ink2).SingleLine()
 				alIn := ui.TextInput(c.Key("al-in-"+task.ID), &a.alarmInputStr).Font(FontMono).Width(92).Placeholder("09:30").AutoFocus().Label("闹钟时间")
-				saveB := ui.PrimaryButton(c, "保存").Padding(4, 10).FontSize(12)
+				saveB := primaryBtn(c, "保存", 12, p).Padding(4, 10)
 				if alIn.Submitted() || saveB.Clicked() {
 					v := strings.TrimSpace(a.alarmInputStr)
 					if v != "" && !a.Todo.SetTaskAlarm(task.ID, v) {
@@ -698,7 +820,7 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 						}
 						if a.editingSubKey == subKey {
 							sin := ui.TextInput(c.Key("sed-"+sub.ID), &a.editingSubVal).FontSize(14).AutoFocus().Grow(1).Label("修改步骤")
-							okb := ui.PrimaryButton(c, "保存").Padding(3, 9).FontSize(12)
+							okb := primaryBtn(c, "保存", 12, p).Padding(3, 9)
 							canb := ui.Button(c, "取消").Padding(3, 9).FontSize(12)
 							if sin.Submitted() || okb.Clicked() {
 								a.Todo.SetSubTitle(task.ID, sub.ID, a.editingSubVal)
@@ -734,8 +856,8 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 
 				if a.subAddTaskID == task.ID {
 					ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-						sin := ui.TextInput(c.Key("sub-add-"+task.ID), &a.subAddDraft).FontSize(13.5).Placeholder("输入小步骤，回车添加").AutoFocus().Grow(1).Label("新小步骤")
-						addB := ui.PrimaryButton(c, "添加").Padding(4, 12).FontSize(12)
+						sin := ui.TextInput(c.Key("sub-add-"+task.ID), &a.subAddDraft).FontSize(14).Placeholder("输入小步骤，回车添加").AutoFocus().Grow(1).Label("新小步骤")
+						addB := primaryBtn(c, "添加", 12, p).Padding(4, 12)
 						canB := ui.Button(c, "取消").Padding(4, 12).FontSize(12)
 						if sin.Submitted() || addB.Clicked() {
 							if a.Todo.AddSubtask(task.ID, a.subAddDraft) != nil {
