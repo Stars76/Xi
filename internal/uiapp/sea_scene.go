@@ -72,6 +72,18 @@ type sceneRuntime struct {
 	glyphMap     map[rune][]ui.Glyph
 	glyphAscent  float32
 	glyphAdvance float32
+	bigMap       map[bigKey]bigGlyph
+}
+
+type bigKey struct {
+	r    rune
+	size float32
+}
+
+type bigGlyph struct {
+	gs  []ui.Glyph
+	w   float32
+	asc float32
 }
 
 func (sr *sceneRuntime) nextRand() float64 {
@@ -109,6 +121,24 @@ func (sr *sceneRuntime) ensureFont(px int) {
 		adv = float32(px) * 0.6
 	}
 	sr.glyphAdvance = adv
+}
+
+// shapeBig shapes one rune at an arbitrary size (the sun and moon), cached per rune and size.
+func (sr *sceneRuntime) shapeBig(r rune, size float32) (gs []ui.Glyph, width, ascent float32) {
+	key := bigKey{r, size}
+	if b, ok := sr.bigMap[key]; ok {
+		return b.gs, b.w, b.asc
+	}
+	f := ui.Font{Family: FontMono, Size: size}
+	b := bigGlyph{gs: ui.Shape(string(r), f), asc: f.Metrics().Ascent}
+	for _, g := range b.gs {
+		b.w += g.Advance
+	}
+	if sr.bigMap == nil {
+		sr.bigMap = map[bigKey]bigGlyph{}
+	}
+	sr.bigMap[key] = b
+	return b.gs, b.w, b.asc
 }
 
 func (sr *sceneRuntime) shapeRune(r rune) []ui.Glyph {
@@ -335,247 +365,156 @@ const (
 	stormStrikeLen   = 0.34 // how long one strike lasts
 )
 
-// drawSceneBackdrop paints time-of-day sky lighting + volumetric clouds, glowing moon/sun,
-// water reflections, twinkling stars, and smooth vector flapping seabirds behind the ocean waves.
-func (s *SeaState) drawSceneBackdrop(p *ui.Painter, r ui.Rect, v SeaView, wl float64, tt float64, now time.Time) {
-	if !v.TimeLighting || v.HighContrast {
-		return
-	}
-	period, _ := DayPeriod(now)
-	skyH := float32(math.Max(float64(r.H)*0.34, float64(r.H)*(wl+0.12)))
-	if skyH > r.H {
-		skyH = r.H
-	}
-	skyRect := ui.Rect{X: r.X, Y: r.Y, W: r.W, H: skyH}
+// seaLight describes the sun or moon for the current hour: where it stands, what colour its light
+// is, and how strongly it lies on the water. Strength is 0 when there is none to see.
+type seaLight struct {
+	period   string  // dawn | day | dusk | night
+	u        float64 // horizontal position, 0..1
+	low      bool    // near the horizon (dawn, dusk) rather than high in the sky
+	col      ui.Color
+	strength float64
+}
 
+// sceneLight works out the light for v at now. Weather owns the sky: under rain, storm, fog or snow
+// there is no sun, moon or star to see, and nothing to reflect.
+func sceneLight(v SeaView, now time.Time) seaLight {
+	period, _ := DayPeriod(now)
+	l := seaLight{period: period}
+	if !v.TimeLighting || v.HighContrast || (v.Weather != "" && v.Weather != "clear") {
+		return l
+	}
+	warm, moon, noon := ui.Hex("#E9A23B"), ui.Hex("#007CFF"), ui.Hex("#4DABFF")
+	if v.Dark {
+		warm, moon, noon = ui.Hex("#FFD79A"), ui.Hex("#EBF5FF"), ui.Hex("#BFE2FF")
+	}
 	switch period {
 	case "dawn":
-		topCol := ui.RGBA(147, 211, 255, 0.24)
-		midCol := ui.RGBA(255, 224, 192, 0.16)
-		if v.Dark {
-			topCol = ui.RGBA(35, 74, 116, 0.34)
-			midCol = ui.RGBA(112, 134, 178, 0.18)
-		}
-		p.FillGradient(skyRect, ui.LinearGradient{
-			Angle: 180,
-			Stops: []ui.GradientStop{
-				{Color: topCol, At: 0.0},
-				{Color: midCol, At: 0.58},
-				{Color: ui.Transparent, At: 1.0},
-			},
-		}, 0)
+		l.u, l.low, l.col, l.strength = 0.77, true, warm, 0.85
 	case "dusk":
-		topCol := ui.RGBA(42, 92, 158, 0.22)
-		midCol := ui.RGBA(236, 174, 142, 0.16)
-		if v.Dark {
-			topCol = ui.RGBA(24, 48, 84, 0.38)
-			midCol = ui.RGBA(118, 122, 168, 0.18)
-		}
-		p.FillGradient(skyRect, ui.LinearGradient{
-			Angle: 180,
-			Stops: []ui.GradientStop{
-				{Color: topCol, At: 0.0},
-				{Color: midCol, At: 0.62},
-				{Color: ui.Transparent, At: 1.0},
-			},
-		}, 0)
+		l.u, l.low, l.col, l.strength = 0.23, true, warm, 0.80
 	case "night":
-		topCol := ui.RGBA(10, 46, 94, 0.18)
-		if v.Dark {
-			topCol = ui.RGBA(6, 14, 26, 0.44)
-		}
-		p.FillGradient(skyRect, ui.LinearGradient{
-			Angle: 180,
-			Stops: []ui.GradientStop{
-				{Color: topCol, At: 0.0},
-				{Color: ui.Transparent, At: 1.0},
-			},
-		}, 0)
-	default: // day
-		topCol := ui.RGBA(186, 226, 255, 0.18)
-		if v.Dark {
-			topCol = ui.RGBA(29, 62, 102, 0.22)
-		}
-		p.FillGradient(skyRect, ui.LinearGradient{
-			Angle: 180,
-			Stops: []ui.GradientStop{
-				{Color: topCol, At: 0.0},
-				{Color: ui.Transparent, At: 1.0},
-			},
-		}, 0)
+		l.u, l.col, l.strength = 0.81, moon, 0.90
+	default:
+		l.u, l.col, l.strength = 0.80, noon, 0.45
 	}
+	return l
+}
 
-	if v.Weather == "storm" {
-		stormTop := ui.RGBA(15, 42, 76, 0.26)
-		if v.Dark {
-			stormTop = ui.RGBA(5, 11, 20, 0.48)
-		}
-		p.FillGradient(ui.Rect{X: r.X, Y: r.Y, W: r.W, H: r.H * 0.48}, ui.LinearGradient{
-			From: stormTop, To: ui.Transparent, Angle: 180,
-		}, 0)
+// drawSceneBackdrop writes the sky in characters on the same flat paper as the sea: a sun or moon,
+// stars at night, a few cloud outlines by day, birds at dusk. There is no painted sky; the hour is
+// told by what is up there and by its light lying on the water (see the light path in SeaState.Draw).
+func (s *SeaState) drawSceneBackdrop(p *ui.Painter, r ui.Rect, v SeaView, wl float64, tt float64, now time.Time) {
+	light := sceneLight(v, now)
+	if light.strength <= 0 {
 		return
 	}
+	horizon := s.frame.surfaceY(r, 0.5)
+	skyH := horizon - r.Y
+	if skyH < 64 {
+		return // the water stands too high to leave a sky
+	}
+	still := v.Motion == "off" || v.ReduceMotion
 
 	px := 11
 	if r.W >= 540 {
 		px = 12
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.scene.ensureFont(px)
 	adv := s.scene.glyphAdvance
 	asc := s.scene.glyphAscent
-	drawLine := func(x, y float32, text string, col ui.Color) {
-		cx := x
-		for _, ch := range text {
-			if ch != ' ' {
-				gs := s.scene.shapeRune(ch)
-				p.Glyphs(gs, cx, y+asc, col)
-			}
-			cx += adv
-		}
+	glyph := func(ch rune, x, y float32, col ui.Color) {
+		p.Glyphs(s.scene.shapeRune(ch), x-adv/2, y+asc*0.5, col)
+	}
+	big := func(ch rune, size, x, y float32, col ui.Color) {
+		gs, w, a := s.scene.shapeBig(ch, size)
+		p.Glyphs(gs, x-w/2, y+a*0.36, col)
 	}
 
-	starCol := ui.Hex("#0B4F96")
-	cloudCol := ui.Hex("#88C6FF")
-	warmCol := ui.Hex("#F7C88B")
-	birdCol := ui.Hex("#1A5A9E")
+	ink := ui.Hex("#0B4F96")
+	soft := ui.Hex("#4DABFF")
 	if v.Dark {
-		starCol = ui.Hex("#CBE6FF")
-		cloudCol = ui.Hex("#4B8FD8")
-		warmCol = ui.Hex("#FFE0A8")
-		birdCol = ui.Hex("#93C8FF")
+		ink, soft = ui.Hex("#CBE6FF"), ui.Hex("#6CB5FF")
 	}
 
-	// Helper: soft translucent radial puff with pill radius & early zero-alpha falloff (zero rectangular clip edges)
-	drawPuff := func(cx, cy, rx, ry float32, col ui.Color, alpha float32) {
-		if alpha <= 0.005 {
-			return
+	// Sun or moon: high in the sky by day and night, sitting just above the horizon at dawn and dusk.
+	bx := r.X + float32(light.u)*r.W
+	by := r.Y + float32(math.Max(40, float64(skyH)*0.30))
+	if light.low {
+		by = s.frame.surfaceY(r, light.u) - 30
+		if by < r.Y+24 {
+			by = r.Y + 24
 		}
-		rad := ry
-		if rx < rad {
-			rad = rx
-		}
-		p.FillRadialGradient(ui.Rect{X: cx - rx, Y: cy - ry, W: rx * 2, H: ry * 2}, ui.RadialGradient{
-			Stops: []ui.GradientStop{
-				{Color: col.Alpha(alpha), At: 0.0},
-				{Color: col.Alpha(alpha * 0.36), At: 0.42},
-				{Color: ui.Transparent, At: 0.76},
-				{Color: ui.Transparent, At: 1.0},
-			},
-		}, rad)
 	}
+	body := '○'
+	if light.period == "night" {
+		body = '☾'
+	}
+	big(body, 26, bx, by, light.col.Alpha(0.95))
 
-	switch period {
+	switch light.period {
 	case "night":
-		starCount := 16
+		count := 14
 		if r.W >= 540 {
-			starCount = 28
+			count = 24
 		}
-		starGlyphs := []string{"·", "·", "·", "✦"}
-		for i := 0; i < starCount; i++ {
-			sx := r.X + float32(0.06+0.88*cellHash(i*13+5, 3))*r.W
-			sy := r.Y + float32(0.06+0.34*cellHash(i*7+2, 11))*skyH
-			twinkle := 0.25 + 0.52*(0.5+0.5*math.Sin(tt*1.8+float64(i)*1.7))
-			if v.Motion == "off" || v.ReduceMotion {
-				twinkle = 0.48
+		stars := []rune{'✦', '+', '·', '·'}
+		for i := 0; i < count; i++ {
+			sx := r.X + float32(0.05+0.90*cellHash(i*13+5, 3))*r.W
+			sy := r.Y + 14 + float32(0.02+0.78*cellHash(i*7+2, 11))*(skyH-40)
+			if math.Abs(float64(sx-bx)) < 26 && math.Abs(float64(sy-by)) < 24 {
+				continue // leave the moon its room
 			}
-			g := starGlyphs[i%len(starGlyphs)]
-			drawLine(sx, sy, g, starCol.Alpha(float32(twinkle)))
-		}
-		// Luminous glowing crescent moon + shimmering moonlight reflection dancing on live waves below!
-		moonXNorm := 0.81
-		mx := r.X + float32(moonXNorm)*r.W
-		my := r.Y + float32(math.Max(46, float64(r.H)*0.13))
-		moonCol := ui.Hex("#EBF5FF")
-		if !v.Dark {
-			moonCol = ui.Hex("#3B9BFF")
-		}
-		drawPuff(mx, my, 46, 46, moonCol, 0.14)
-		drawPuff(mx, my, 22, 22, moonCol, 0.26)
-		// Sculpted glowing crescent arc using smooth Bezier path
-		var moon ui.Path
-		moon.MoveTo(mx+4, my-12).
-			QuadTo(mx-11, my-6, mx-11, my+1).
-			QuadTo(mx-11, my+10, mx+5, my+13).
-			QuadTo(mx-4, my+6, mx-4, my+0).
-			QuadTo(mx-4, my-6, mx+4, my-12).Close()
-		p.FillPath(&moon, moonCol.Alpha(0.86))
-
-		// Shimmering vertical moonlight reflection ripples along the rolling water column below the moon
-		waveY := s.frame.surfaceY(r, moonXNorm)
-		for ri := 0; ri < 5; ri++ {
-			rf := float32(ri)
-			ry := waveY + 10 + rf*16
-			if ry > r.Y+r.H-12 {
-				break
+			tw := 0.50
+			if !still {
+				tw = 0.25 + 0.55*(0.5+0.5*math.Sin(tt*1.8+float64(i)*1.7))
 			}
-			wobble := float32(math.Sin(tt*2.0+float64(ri)*1.3) * 5.0)
-			rw := float32(28 - ri*4)
-			al := float32((0.20 - float64(ri)*0.032) * (0.75 + 0.25*math.Sin(tt*2.4+float64(ri))))
-			drawPuff(mx+wobble, ry, rw, 4.5, moonCol, al)
+			glyph(stars[i%len(stars)], sx, sy, ink.Alpha(float32(tw)))
 		}
-
-	case "dawn":
-		sunXNorm := 0.77
-		sx := r.X + float32(sunXNorm)*r.W
-		sy := r.Y + float32(math.Max(46, float64(r.H)*0.14))
-		drawPuff(sx, sy, 62, 54, warmCol, 0.22)
-		drawPuff(sx, sy, 26, 26, warmCol, 0.36)
-		var sun ui.Path
-		sun.Circle(sx, sy, 11)
-		p.FillPath(&sun, warmCol.Alpha(0.82))
-		// Gentle horizon sun shimmer on the live waves
-		waveY := s.frame.surfaceY(r, sunXNorm)
-		for ri := 0; ri < 4; ri++ {
-			ry := waveY + 10 + float32(ri)*15
-			wobble := float32(math.Sin(tt*1.8+float64(ri)*1.4) * 6.0)
-			drawPuff(sx+wobble, ry, float32(34-ri*5), 5.0, warmCol, float32(0.18-float64(ri)*0.035))
-		}
-
 	case "day":
-		// Soft volumetric drifting cloud pillows (zero clunky ASCII boxes!)
-		cloudCount := 2
+		// A few cloud outlines drifting: a row of arcs, nothing filled in.
+		clouds := 2
 		if r.W >= 540 {
-			cloudCount = 3
+			clouds = 3
 		}
-		for i := 0; i < cloudCount; i++ {
-			spd := 0.012 + float64(i%2)*0.005
-			drift := math.Mod(float64(i)*0.36+tt*spd+0.14, 1.30) - 0.15
+		for i := 0; i < clouds; i++ {
+			spd := 0.010 + float64(i%2)*0.004
+			drift := math.Mod(float64(i)*0.37+tt*spd+0.12, 1.30) - 0.15
 			cx := r.X + float32(drift)*r.W
-			cy := r.Y + float32(0.09+float64(i%2)*0.08+0.01*math.Sin(tt*0.5+float64(i)))*r.H
-			sc := float32(0.85 + float64(i%2)*0.28)
-			al := float32(0.24)
-			if v.Dark {
-				al = 0.16
+			cy := r.Y + 22 + float32(0.10+0.22*float64(i%3)/2)*(skyH-50)
+			arcs := 3 + i%3
+			for k := 0; k < arcs; k++ {
+				x := cx + (float32(k)-float32(arcs)/2)*adv*1.9
+				if math.Abs(float64(x-bx)) < 24 && math.Abs(float64(cy-by)) < 20 {
+					continue
+				}
+				lift := float32(0)
+				if k > 0 && k < arcs-1 {
+					lift = -3 // the middle of a cloud stands a little taller
+				}
+				glyph('⌒', x, cy+lift, soft.Alpha(0.70))
 			}
-			drawPuff(cx-24*sc, cy+3*sc, 32*sc, 13*sc, cloudCol, al*0.85)
-			drawPuff(cx+4*sc, cy-4*sc, 40*sc, 17*sc, cloudCol, al)
-			drawPuff(cx+30*sc, cy+4*sc, 28*sc, 12*sc, cloudCol, al*0.80)
 		}
-
 	case "dusk":
-		// Graceful soaring vector seabirds with continuous 60fps curved Bezier wingbeats!
-		birdCount := 3
+		// Birds heading home: v, -, ^ in turn make the wingbeat.
+		birds := 3
 		if r.W >= 540 {
-			birdCount = 5
+			birds = 5
 		}
-		for i := 0; i < birdCount; i++ {
-			spd := 0.024 + float64(i%3)*0.006
-			drift := math.Mod(float64(i)*0.22+tt*spd+0.12, 1.22) - 0.11
-			bx := r.X + float32(drift)*r.W
-			flap := math.Sin(tt*4.2 + float64(i)*1.7)
-			by := r.Y + float32(0.09+float64(i%3)*0.055+0.012*math.Sin(tt*1.6+float64(i)))*r.H
-			span := float32(7.5 + float64(i%2)*3.0)
-			lift := float32(flap * 4.2)
-			var bird ui.Path
-			bird.MoveTo(bx-span, by-lift).
-				QuadTo(bx-span*0.42, by-3.5-lift*0.35, bx, by).
-				QuadTo(bx+span*0.42, by-3.5-lift*0.35, bx+span, by-lift)
-			al := float32(0.46 - float64(i%3)*0.08)
-			p.StrokePath(&bird, 1.35, birdCol.Alpha(al))
+		wing := []rune{'v', '-', '^', '-'}
+		for i := 0; i < birds; i++ {
+			spd := 0.022 + float64(i%3)*0.006
+			drift := math.Mod(float64(i)*0.21+tt*spd+0.12, 1.22) - 0.11
+			x := r.X + float32(drift)*r.W
+			y := r.Y + 20 + float32(0.08+0.16*float64(i%3))*(skyH-40) + float32(2.5*math.Sin(tt*1.6+float64(i)))
+			beat := 0
+			if !still {
+				beat = int(math.Floor(tt*3.2+float64(i)*0.7)) % len(wing)
+			}
+			glyph(wing[beat], x, y, ink.Alpha(float32(0.62-0.08*float64(i%3))))
 		}
 	}
-	s.mu.Unlock()
 }
 
 // drawSceneEncounters updates & renders active random ASCII easter eggs (all 6) + click reaction quotes!

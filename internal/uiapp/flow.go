@@ -353,6 +353,16 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 		pxLocal := float64(v.PointerX - r.X)
 		pyLocal := float64(v.PointerY - r.Y)
 		fog := v.Weather == "fog"
+		// The hour is told by light on the water: a path of lit glyphs under the sun or moon,
+		// and a slightly deeper sea at night.
+		light := sceneLight(v, now)
+		nightStep := 0
+		if light.period == "night" && v.TimeLighting && !v.HighContrast {
+			nightStep = 1
+			if v.Dark {
+				nightStep = -1
+			}
+		}
 		flash := stormFlash(v, tt)
 		flashStep := -2 // on paper, light is less ink
 		if v.Dark {
@@ -402,13 +412,26 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 				idx := seaBodyGlyphs[min(2, int(depth*3))]
 				ci := min(len(colors)-1, 2+int(math.Round(depth*float64(len(colors)-3))))
 				alpha := 0.50 + 0.48*depth + hurryBoost
+				col := colors[ci]
+				if nightStep != 0 && depth > 0.18 {
+					col = colors[max(0, min(len(colors)-1, ci+nightStep))]
+				}
+				if light.strength > 0 {
+					// The light path narrows towards the horizon and shimmers with the rows.
+					spread := 0.030 + 0.085*depth
+					du := (uu - light.u + 0.012*math.Sin(tt*2.0+float64(row)*1.3)) / spread
+					if g := math.Exp(-du*du) * light.strength * math.Exp(-depth*1.5) * 1.25; g > 0.05 {
+						col = col.MixOklab(light.col, float32(math.Min(1, g)))
+						alpha = math.Min(1, alpha+0.30*g)
+					}
+				}
 				if fog {
 					// Fog is told by the water itself: the surface thins out into the mist.
 					alpha *= 0.30 + 0.70*smoothstep01(depth/0.45)
 				}
 				if flash > 0 {
 					// Lightning lights the water for an instant: the glyphs flare towards the light end of the ramp.
-					ci = max(0, min(len(colors)-1, ci+flashStep))
+					col = colors[max(0, min(len(colors)-1, ci+flashStep))]
 					alpha = math.Min(1, alpha+0.22*flash)
 				}
 				if v.HighContrast {
@@ -421,7 +444,7 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 				yOff := waveSin * cellF * 0.16
 				gx := r.X + float32(x) - advances[idx]/2
 				gy := r.Y + float32(y-half+yOff) + ascents[idx] + float32(cellF-float64(ascents[idx]))*0.18
-				p.Glyphs(glyphs[idx], gx, gy, colors[ci].Alpha(float32(alpha)))
+				p.Glyphs(glyphs[idx], gx, gy, col.Alpha(float32(alpha)))
 			}
 		}
 
