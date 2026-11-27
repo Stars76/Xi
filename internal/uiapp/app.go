@@ -730,7 +730,7 @@ func (a *App) onTimerEvent(ev timer.Event) {
 					a.Sound.Play("break")
 				}
 			}
-			// Reward completed focus rounds with a natural celebratory DeepSeek Whale (or ocean easter egg)!
+			// Reward completed focus rounds with a celebratory 526Hz whale (or another ocean easter egg).
 			if ev.Phase == "focus" && a.seaSceneSnapshot().EncountersOn {
 				kind := a.stageSea.TriggerEncounter(EncounterWhale, a.now(), true)
 				a.recordNaturalEncounter(kind)

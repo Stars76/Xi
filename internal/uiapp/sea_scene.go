@@ -12,7 +12,7 @@ import (
 const (
 	EncounterAngler     = "angler"     // 垂钓小船
 	EncounterPirate     = "pirate"     // 幽灵海盗船
-	EncounterWhale      = "whale"      // 深海蓝鲸（DeepSeek 版）
+	EncounterWhale      = "whale"      // 526Hz 深海蓝鲸
 	EncounterDolphin    = "dolphin"    // 跃浪海豚群
 	EncounterLighthouse = "lighthouse" // 深夜灯塔与流星
 	EncounterAurora     = "aurora"     // 海面字符极光

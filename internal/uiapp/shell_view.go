@@ -92,8 +92,8 @@ func badgeChip(c *ui.Context, text string, bg, fg, border ui.Color) ui.Element {
 	return el
 }
 
-// MainView renders the unified Sisyphus studio shell:
-// collapsible 196px Ocean-Tide Sidebar + Center Workspace (Today / Focus Clock / Calendar / Stats / Settings) + Optional Right Timeline Drawer.
+// MainView renders the unified 526Hz studio shell:
+// Ocean-Tide Sidebar (196px, or a 56px icon rail) + Center Workspace (Today / Focus Clock / Calendar / Stats / Settings) + Optional Right Timeline Drawer.
 func (a *App) MainView(c *ui.Context) {
 	th, p := a.paletteOf(c)
 	c.SetTheme(th)

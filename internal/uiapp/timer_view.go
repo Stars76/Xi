@@ -89,7 +89,7 @@ func (a *App) TimerView(c *ui.Context) {
 		remainRatio = float64(t.LeftMs) / float64(int64(t.TotalSec)*1000)
 	}
 
-	// Root card mirrors timer/style.css: subtle vertical paper->surface gradient
+	// Root card: subtle vertical paper->surface gradient
 	root := ui.Box(c).Fill().LinearGradient(ui.LinearGradient{
 		From:  p.Paper,
 		To:    p.Surface,

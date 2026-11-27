@@ -26,3 +26,28 @@ jobs:
 
       - name: Test
         run: go test -tags mygo_nowebview -count=1 ./...
+
+  # The domain packages and the headless UI tests also run on Linux, which gives a faster signal
+  # than the Windows job. The app itself still ships for Windows only.
+  test-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install native libraries loaded by the UI and audio runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0t64 libasound2t64
+
+      - name: Vet
+        run: go vet -tags mygo_nowebview ./...
+
+      - name: Test
+        run: go test -tags mygo_nowebview -count=1 ./...
