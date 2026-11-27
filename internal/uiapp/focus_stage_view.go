@@ -122,56 +122,21 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 
 				// Ocean Scene & Encounter Atlas trigger
 				sceneBadge := WeatherDisplayBadge(sc.WeatherMode, sc.LiveWeather, sc.LiveTempC)
-				sceneBtn := ui.ButtonBase(c).Height(32).Padding(0, 11).Radius(9).
-					Background(p.TimerChipBg).Border(1, p.Line).Transition(colorFadeFast).
-					Cursor(ui.CursorPointer).Label("海域场景").Tooltip("海域场景")
-				if a.sceneModalOpen {
-					sceneBtn.Background(p.AccentSoft).Border(1, p.Blue)
-				} else if sceneBtn.Hovered() {
-					sceneBtn.Border(1, p.Blue)
-				}
-				sceneBtn.Children(func() {
-					ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, IconScene).Size(14, 14).TextColor(p.BlueDeep)
-						ui.Text(c, sceneBadge).FontSize(12.5).FontWeight(600).TextColor(p.Navy).SingleLine()
-					})
-				})
+				sceneBtn := stageToolBtn(c, IconScene, sceneBadge, "海域场景", "天气、天色与海洋图鉴", a.sceneModalOpen, p)
 				if sceneBtn.Clicked() {
 					a.sceneModalOpen = !a.sceneModalOpen
 					a.timerShowSetup = false
 					a.timerShowSet = false
 				}
 
-				// 1-click PiP pop-out buttons
-				pipBtn := ui.ButtonBase(c).Height(32).Padding(0, 12).Radius(9).
-					Background(p.TimerChipBg).Border(1, p.Line).Transition(colorFadeFast).
-					Cursor(ui.CursorPointer).Label("弹出画中画").Tooltip("剥离为置顶字符海小窗")
-				if pipBtn.Hovered() {
-					pipBtn.Border(1, p.Blue)
-				}
-				pipBtn.Children(func() {
-					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, IconPiP).Size(14, 14).TextColor(p.BlueDeep)
-						ui.Text(c, "画中画").FontSize(12.5).FontWeight(600).TextColor(p.Navy).SingleLine()
-					})
-				})
+				// Pop-out windows: the single home for PiP and the floating pill
+				pipBtn := stageToolBtn(c, IconPiP, "画中画", "弹出画中画", "弹出置顶的小窗，与这里共享同一片海", false, p)
 				if pipBtn.Clicked() {
 					a.SetTimerMiniPill(false)
 					a.OpenTimerWindow()
 				}
 
-				pillBtn := ui.ButtonBase(c).Height(32).Padding(0, 11).Radius(9).
-					Background(p.TimerChipBg).Border(1, p.Line).Transition(colorFadeFast).
-					Cursor(ui.CursorPointer).Label("弹出灵动条").Tooltip("剥离为 264×50 悬浮胶囊")
-				if pillBtn.Hovered() {
-					pillBtn.Border(1, p.Blue)
-				}
-				pillBtn.Children(func() {
-					ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, IconCompact).Size(13.5, 13.5).TextColor(p.Ink2)
-						ui.Text(c, "灵动条").FontSize(12.5).FontWeight(600).TextColor(p.Ink2).SingleLine()
-					})
-				})
+				pillBtn := stageToolBtn(c, IconCompact, "灵动条", "弹出灵动条", "弹出 264×50 的悬浮计时条", false, p)
 				if pillBtn.Clicked() {
 					a.OpenTimerWindow()
 					a.SetTimerMiniPill(true)
@@ -303,6 +268,25 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 			a.renderTimerDoneOverlay(c, p)
 		}
 	})
+}
+
+// stageToolBtn is the one icon+label button style used across the Focus Clock toolbar.
+func stageToolBtn(c *ui.Context, icon *ui.SVG, text, label, tip string, active bool, p Palette) ui.Element {
+	b := ui.ButtonBase(c).Height(32).Padding(0, 11).Radius(9).
+		Background(p.TimerChipBg).Border(1, p.Line).Transition(colorFadeFast).
+		Cursor(ui.CursorPointer).Label(label).Tooltip(tip)
+	if active {
+		b.Background(p.AccentSoft).Border(1, p.Blue)
+	} else if b.Hovered() {
+		b.Border(1, p.Blue)
+	}
+	b.Children(func() {
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, icon).Size(14, 14).TextColor(p.BlueDeep)
+			ui.Text(c, text).FontSize(12.5).FontWeight(600).TextColor(p.Navy).SingleLine()
+		})
+	})
+	return b
 }
 
 func (a *App) renderStageBoundTaskCard(c *ui.Context, taskDay string, task store.Task, p Palette) {

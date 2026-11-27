@@ -124,6 +124,8 @@ type App struct {
 	yearDirty        bool
 	cachedHistory    []store.HistoryEntry
 	historyDirty     bool
+	yearSelDay       string // year heatmap: day pinned by a click
+	yearHoverDay     string // year heatmap: day under the pointer at the last paint
 	statsOnlyUnbound bool
 	statsShowAllRecs bool
 	lastUndoHistory  []store.HistoryEntry

@@ -135,6 +135,12 @@ func (a *App) MainView(c *ui.Context) {
 
 	snap := a.Timer.Snapshot()
 	a.handleGlobalShortcuts(c, snap)
+
+	// Responsive shell: the sidebar folds to an icon rail (by choice, or when the window is narrow)
+	// and the timeline drawer only opens when the workspace keeps a usable width beside it.
+	winW, _ := c.Size()
+	rail := a.sidebarCollapsed || winW < railBelowWidth
+	drawerFits := winW >= drawerMinWidth
 	bar := c.TitleBar()
 	leftPad := float32(14)
 	if runtime.GOOS == "darwin" && bar.Left > 0 {
@@ -150,16 +156,20 @@ func (a *App) MainView(c *ui.Context) {
 		}
 		tb.Children(func() {
 			// Brand zone + collapsible sidebar toggle
-			brandW := float32(196)
-			if a.sidebarCollapsed {
+			brandW := float32(sidebarWidth)
+			if rail {
 				brandW = 160
 			}
 			brandRow := ui.Row(c).Width(brandW).FillHeight().Padding(0, 10, 0, leftPad).Gap(7).AlignItems(ui.Center)
-			if !a.sidebarCollapsed {
+			if !rail {
 				brandRow.BorderWidth(0, 1, 0, 0).BorderColor(p.LineSoft)
 			}
 			brandRow.Children(func() {
-				sbBtn := iconBtn(c, IconSidebar, "切换侧栏", "展开 / 收起导航侧栏", p).Size(28, 28)
+				sbTip := "展开 / 收起导航侧栏"
+				if winW < railBelowWidth {
+					sbTip = "窗口较窄，侧栏已自动收为图标栏"
+				}
+				sbBtn := iconBtn(c, IconSidebar, "切换侧栏", sbTip, p).Size(28, 28)
 				if sbBtn.Clicked() {
 					a.sidebarCollapsed = !a.sidebarCollapsed
 					a.saveTodoViewPrefs()
@@ -178,15 +188,21 @@ func (a *App) MainView(c *ui.Context) {
 			// Right timeline drawer toggle + live timer status chip (opens in-window Focus Stage or PiP!)
 			ui.Row(c).Gap(8).Padding(0, 10, 0, 0).AlignItems(ui.Center).Children(func() {
 				tlBtn := iconBtn(c, IconTimeline, "切换今日时间轴侧栏", "展开 / 收起今日时间轴", p)
-				if a.tlDrawerOpen {
+				if a.tlDrawerOpen && drawerFits {
 					tlBtn.Background(p.AccentSoft).Border(1, p.AccentVeil)
 				}
 				if tlBtn.Clicked() {
-					a.tlDrawerOpen = !a.tlDrawerOpen
-					if a.tlDrawerOpen {
-						a.markStatsDirty()
+					if drawerFits {
+						a.tlDrawerOpen = !a.tlDrawerOpen
+						if a.tlDrawerOpen {
+							a.markStatsDirty()
+						}
+						a.saveTodoViewPrefs()
+					} else {
+						// No room for a side drawer: open the full day timeline instead.
+						a.statsTab = 0
+						a.navigate("stats")
 					}
-					a.saveTodoViewPrefs()
 				}
 				a.renderShellTimerChip(c, snap, p)
 			})
@@ -251,9 +267,7 @@ func (a *App) MainView(c *ui.Context) {
 
 		// Studio body: Collapsible 196px Ocean-Tide Sidebar + Center Workspace + Optional Right Timeline Drawer
 		ui.Row(c).Grow(1).MinHeight(0).FillWidth().Children(func() {
-			if !a.sidebarCollapsed {
-				a.renderSidebar(c, snap, p)
-			}
+			a.renderSidebar(c, snap, p, rail)
 
 			// Center unified workspace
 			ui.Column(c).Grow(1).MinHeight(0).MinWidth(0).FillHeight().Background(p.Paper).Clip().Children(func() {
@@ -272,7 +286,7 @@ func (a *App) MainView(c *ui.Context) {
 			})
 
 			// Optional right-hand live Today Timeline drawer
-			if a.tlDrawerOpen && a.activeOverlay == "" {
+			if a.tlDrawerOpen && drawerFits && a.activeOverlay == "" {
 				a.renderRightTimelineDrawer(c, p)
 			}
 		})
@@ -290,6 +304,13 @@ func (a *App) MainView(c *ui.Context) {
 		})
 	}
 }
+
+const (
+	sidebarWidth   = 196
+	railWidth      = 56
+	railBelowWidth = 900  // below this window width the sidebar always shows as the icon rail
+	drawerMinWidth = 1000 // the 280px timeline drawer needs at least this window width
+)
 
 // navPages lists the main-window pages in sidebar order; Ctrl+1..5 follow the same order.
 var navPages = []struct {
@@ -325,12 +346,17 @@ func (a *App) handleGlobalShortcuts(c *ui.Context, snap timer.Snapshot) {
 	}
 }
 
-func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
+func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette, rail bool) {
 	_, doneCount, totalCount := a.todayTideLevel(snap)
 	openCount := totalCount - doneCount
 
+	if rail {
+		a.renderSidebarRail(c, snap, openCount, p)
+		return
+	}
+
 	// Clean minimalist studio sidebar matching the quiet 526Hz paper-and-ocean aesthetic
-	ui.Column(c).Width(196).FillHeight().Background(p.Surface).
+	ui.Column(c).Width(sidebarWidth).FillHeight().Background(p.Surface).
 		BorderWidth(0, 1, 0, 0).BorderColor(p.Line).
 		Padding(14, 10, 12, 10).Gap(5).Children(func() {
 
@@ -395,7 +421,7 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
 			ui.Spacer(c)
 
 			// Crisp "今日专注" summary card anchored cleanly at the bottom of the sidebar
-			ui.Column(c).FillWidth().Padding(12, 11).Radius(13).
+			ui.Column(c.Key("sidebar-summary")).FillWidth().Padding(12, 11).Radius(13).
 				Background(p.Paper).Border(1, p.Line).
 				Shadow(0, 4, 14, 0, p.CardShadow).Gap(8).Children(func() {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
@@ -406,40 +432,60 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
 					ui.Textf(c, "%d分 · %d轮", snap.Stats.Minutes, snap.Stats.Rounds).
 						Font(FontMono).FontSize(11).TextColor(p.Ink2).Grow(1).SingleLine()
 				})
-				ui.Row(c).FillWidth().Gap(5).Children(func() {
-					pipB := ui.ButtonBase(c).Grow(1).Height(30).Radius(8).Center().
-						Background(p.AccentSoft).Border(1, p.AccentVeil).Transition(colorFadeFast).
-						Cursor(ui.CursorPointer).Label("画中画").Tooltip("弹出置顶字符海小窗")
-					if pipB.Hovered() {
-						pipB.Border(1, p.Blue)
-					}
-					pipB.Children(func() {
-						ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-							ui.Icon(c, IconPiP).Size(13, 13).TextColor(p.BlueDeep)
-							ui.Text(c, "画中画").FontSize(11.5).FontWeight(700).TextColor(p.BlueDeep).SingleLine()
-						})
-					})
-					if pipB.Clicked() {
-						a.SetTimerMiniPill(false)
-						a.OpenTimerWindow()
-					}
-
-					pillB := ui.ButtonBase(c).Size(30, 30).Radius(8).Center().
-						Background(p.Surface).Border(1, p.Line).Transition(colorFadeFast).
-						Cursor(ui.CursorPointer).Label("侧栏灵动条").Tooltip("弹出悬浮灵动条")
-					if pillB.Hovered() {
-						pillB.Border(1, p.Blue)
-					}
-					pillB.Children(func() {
-						ui.Icon(c, IconCompact).Size(13, 13).TextColor(p.Ink2)
-					})
-					if pillB.Clicked() {
-						a.OpenTimerWindow()
-						a.SetTimerMiniPill(true)
-					}
-				})
+				// Pure at-a-glance summary: the pop-out windows are opened from the Focus Clock toolbar.
+				ratio := 0.0
+				if totalCount > 0 {
+					ratio = float64(doneCount) / float64(totalCount)
+				}
+				ui.Progress(c, ratio).FillWidth().Height(4)
 			})
 		})
+}
+
+// renderSidebarRail is the 56px icon-only sidebar: navigation stays one click away when the sidebar
+// is collapsed or the window is too narrow for the full one.
+func (a *App) renderSidebarRail(c *ui.Context, snap timer.Snapshot, openCount int, p Palette) {
+	ui.Column(c).Width(railWidth).FillHeight().Background(p.Surface).
+		BorderWidth(0, 1, 0, 0).BorderColor(p.Line).
+		Padding(14, 0, 12, 0).Gap(5).AlignItems(ui.Center).Children(func() {
+		for i, pg := range navPages {
+			active := a.activeOverlay == pg.ID
+			item := ui.ButtonBase(c.Key("rail-"+pg.ID)).Size(38, 38).Radius(10).Center().
+				Transition(cardFadeFast).Cursor(ui.CursorPointer).Label(pg.Label).
+				Tooltip(fmt.Sprintf("%s · Ctrl+%d", pg.Label, i+1))
+			hov := item.Hovered()
+			if active {
+				item.Background(p.Paper).Border(1, p.Line).Shadow(0, 2, 8, 0, p.CardShadow)
+			} else if hov {
+				item.Background(p.AccentSoft)
+			}
+			// A small dot carries what the full sidebar shows as a badge: open tasks / a live round.
+			dot := ui.Transparent
+			switch {
+			case pg.ID == "focus" && snap.Timer.Running:
+				dot = p.Success
+			case pg.ID == "focus" && snap.Timer.Paused:
+				dot = p.Warn
+			case pg.ID == "" && openCount > 0:
+				dot = p.Blue
+			}
+			item.Children(func() {
+				col := p.Ink2
+				if active {
+					col = p.BlueDeep
+				} else if hov {
+					col = p.Navy
+				}
+				ui.Icon(c, pg.Icon).Size(17, 17).TextColor(col)
+				if dot != ui.Transparent {
+					ui.Box(c).Absolute().Top(6).Right(6).Size(6, 6).Radius(999).Background(dot)
+				}
+			})
+			if item.Clicked() {
+				a.navigate(pg.ID)
+			}
+		}
+	})
 }
 
 func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {

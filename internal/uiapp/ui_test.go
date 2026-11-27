@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -728,5 +729,62 @@ func TestP1SpaceShortcutAndFullBindStrip(t *testing.T) {
 	tt.Key(0, ui.KeySpace)
 	if !a.Timer.Snapshot().Timer.Running {
 		t.Fatal("expected Space to resume the paused round")
+	}
+}
+
+func TestP2ResponsiveShellAndYearDetail(t *testing.T) {
+	a := newUITestApp(t)
+	today := a.Todo.TodayKey()
+	// One finished 50-minute round today feeds the year heatmap, month bars and day detail.
+	a.Timer.RestoreHistoryEntries([]store.HistoryEntry{{
+		Day: today, Phase: "focus", Result: "done", PlannedMinutes: 50, ActualMinutes: 50,
+		StartedAt:  a.now().Add(-time.Hour).UTC().Format(time.RFC3339Nano),
+		FinishedAt: a.now().Add(-10 * time.Minute).UTC().Format(time.RFC3339Nano),
+	}})
+	a.markStatsDirty()
+	tt := ui.NewTester(a.MainView, 1060, 780)
+
+	// Wide window: full sidebar with the info-only summary card (pop-outs live on the Focus Clock).
+	if !slices.Contains(tt.Texts(), "今日专注") || tt.HasText("画中画") {
+		t.Fatalf("expected info-only sidebar summary on a wide window, texts=%v", tt.Texts())
+	}
+
+	// Year tab: month bars and the pinned-day detail fill the space under the heatmap.
+	tt.Key(ui.Ctrl, ui.Key4)
+	a.statsTab = 3
+	tt.Frame()
+	if !tt.HasText("月度专注") || !tt.HasText("当日详情") || !tt.HasText(today) {
+		t.Fatalf("expected month bars + day detail on year tab, texts=%v", tt.Texts())
+	}
+	if !tt.HasText("最高 9月 · 50 分钟") {
+		t.Fatalf("expected best-month summary from seeded history, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("查看当日时间轴"); err != nil {
+		t.Fatal(err)
+	}
+	if a.statsTab != 0 || a.tlDayKey != today {
+		t.Fatalf("expected jump to the day timeline, tab=%d day=%s", a.statsTab, a.tlDayKey)
+	}
+
+	// Narrow window: the sidebar folds to an icon rail that still navigates, and the summary card goes away.
+	tt.Key(ui.Ctrl, ui.Key1)
+	tt.SetSize(720, 560)
+	tt.Frame()
+	if slices.Contains(tt.Texts(), "今日专注") { // exact match: the Today status line also mentions 今日专注
+		t.Fatalf("expected sidebar summary hidden in rail mode, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("专注钟"); err != nil {
+		t.Fatal(err)
+	}
+	if a.activeOverlay != "focus" {
+		t.Fatalf("expected rail icon to navigate, overlay=%q", a.activeOverlay)
+	}
+	// No room for the side drawer: the timeline button opens the full day timeline instead.
+	tt.Key(ui.Ctrl, ui.Key1)
+	if err := tt.Click("切换今日时间轴侧栏"); err != nil {
+		t.Fatal(err)
+	}
+	if a.tlDrawerOpen || a.activeOverlay != "stats" || a.statsTab != 0 {
+		t.Fatalf("expected narrow timeline button to open stats day tab, drawer=%v overlay=%q", a.tlDrawerOpen, a.activeOverlay)
 	}
 }
