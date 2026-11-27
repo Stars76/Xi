@@ -46,12 +46,8 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 	sc := a.seaSceneSnapshot()
 	effWeather := a.effectiveWeather()
 
-	root := ui.Box(c).Fill().LinearGradient(ui.LinearGradient{
-		From:  p.Paper,
-		To:    p.Surface,
-		Angle: 180,
-		Oklab: true,
-	}).Clip()
+	// One flat paper colour behind the sea: the water is made of glyphs alone.
+	root := ui.Box(c).Fill().Background(p.Paper).Clip()
 	px, py, pIn := root.PointerPosition()
 	if root.Clicked() && !a.timerShowSetup && !a.timerShowSet && !a.sceneModalOpen && !a.timerDoneVisible {
 		a.handleOceanClick(px, py)
@@ -79,12 +75,6 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 			Now:          a.liveNow(),
 			OnEncounter:  a.recordNaturalEncounter,
 		})
-
-		// Layer 1: Soft top & bottom translucent veils (strictly behind foreground controls)
-		ui.Box(c).Absolute().Top(0).Left(0).Right(0).HeightPercent(18).ZIndex(1).PassThrough().
-			LinearGradient(ui.LinearGradient{From: p.TimerVeilTop, To: p.TimerVeilZero, Angle: 180})
-		ui.Box(c).Absolute().Bottom(0).Left(0).Right(0).HeightPercent(30).ZIndex(1).PassThrough().
-			LinearGradient(ui.LinearGradient{From: p.TimerVeilZero, To: p.TimerVeilBot, Angle: 180})
 
 		// Layer 2: Foreground immersive stage
 		ui.Column(c).Absolute().Top(0).Right(0).Bottom(0).Left(0).ZIndex(2).Padding(20, 32, 22, 32).Children(func() {
@@ -155,16 +145,6 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 				numWrap := ui.Column(c).Center().Gap(6).Padding(14, 30)
 				if prefs.HighContrast {
 					numWrap.Radius(20).Background(p.TimerHCBack).Border(1, p.Line)
-				} else {
-					numWrap.Draw(func(pt *ui.Painter, r ui.Rect) {
-						pt.FillRadialGradient(r, ui.RadialGradient{
-							Stops: []ui.GradientStop{
-								{Color: p.Paper.Alpha(0.78), At: 0.0},
-								{Color: p.Paper.Alpha(0.45), At: 0.56},
-								{Color: p.Paper.Alpha(0.0), At: 1.0},
-							},
-						}, 0)
-					})
 				}
 				numWrap.Children(func() {
 					weight := 600

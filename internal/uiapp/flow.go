@@ -24,6 +24,7 @@ type SeaState struct {
 	levelShown  float64
 	hasLevel    bool
 	wavePhase   float64
+	moodClock   float64 // seconds of animated time; drives the slow drift between sea moods
 	lastPaintAt time.Time
 	cachedSize  int
 	glyphs      [][]ui.Glyph
@@ -72,6 +73,57 @@ func cellHash(a, b int) float64 {
 	x = (x ^ (x >> 13)) * 1274126177
 	x = x ^ (x >> 16)
 	return float64(x) / 4294967296.0
+}
+
+// The body of the sea is built from three glyphs only, light to heavy. Depth is carried by the
+// weight of the glyph itself and its colour — never by a fill, a stroke or random gaps.
+// The values index seaRunes: ~, ≈, ≋.
+var seaBodyGlyphs = [3]int{3, 5, 7}
+
+// seaSurfaceH is the wave height at which the first glyph appears. Nothing is drawn above it,
+// so the top row of ~ is the waterline.
+const seaSurfaceH = 0.42
+
+// seaMood is one character of the same continuous wave: how wide (K), how tall (Amp), how fast (Speed).
+// The sea drifts slowly from one mood to the next so it is never the same wave for long.
+type seaMood struct{ K, Amp, Speed float64 }
+
+var seaMoods = []seaMood{
+	{K: 4.2, Amp: 0.14, Speed: 1.0},  // the familiar swell
+	{K: 3.2, Amp: 0.09, Speed: 0.6},  // calm
+	{K: 2.6, Amp: 0.17, Speed: 0.85}, // long rollers
+	{K: 5.6, Amp: 0.11, Speed: 1.15}, // fine, quicker waves
+}
+
+const (
+	seaMoodHold   = 90.0  // seconds per mood (roughly half held, half gliding to the next)
+	seaSwellEvery = 240.0 // a broad swell crosses the surface about this often
+	seaSwellPass  = 26.0  // and takes this long to cross
+)
+
+func smoothstep01(x float64) float64 {
+	x = math.Max(0, math.Min(1, x))
+	return x * x * (3 - 2*x)
+}
+
+// seaMoodAt blends the two moods around clock (seconds of animated time).
+func seaMoodAt(clock float64) seaMood {
+	ph := clock / seaMoodHold
+	i := int(math.Floor(ph))
+	a, b := seaMoods[i%len(seaMoods)], seaMoods[(i+1)%len(seaMoods)]
+	f := smoothstep01((ph - math.Floor(ph) - 0.45) / 0.55)
+	return seaMood{a.K + (b.K-a.K)*f, a.Amp + (b.Amp-a.Amp)*f, a.Speed + (b.Speed-a.Speed)*f}
+}
+
+// seaSwellAt returns the centre (0..1 across the width, may be off-screen) and strength (0..1)
+// of the occasional broad swell at clock.
+func seaSwellAt(clock float64) (centre, strength float64) {
+	tIn := math.Mod(clock, seaSwellEvery) - (seaSwellEvery - seaSwellPass - 10)
+	if tIn < 0 || tIn > seaSwellPass {
+		return 0, 0
+	}
+	f := tIn / seaSwellPass
+	return -0.3 + f*1.6, smoothstep01(f/0.25) * smoothstep01((1-f)/0.25)
 }
 
 type SeaView struct {
@@ -160,7 +212,9 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 					if dt > 0.08 {
 						dt = 0.08
 					}
-					s.wavePhase += dt * speed
+					// The phase is integrated, so a mood's change of speed never makes the water jump.
+					s.wavePhase += dt * speed * seaMoodAt(s.moodClock).Speed
+					s.moodClock += dt
 				}
 			}
 			s.lastPaintAt = paintNow
@@ -168,6 +222,8 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 			s.lastPaintAt = time.Time{}
 		}
 		tt := s.wavePhase
+		mood := seaMoodAt(s.moodClock)
+		swellU, swellAmt := seaSwellAt(s.moodClock)
 		levelShown := s.levelShown
 
 		compact := w < 460 || h < 480
@@ -204,7 +260,6 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 
 		cellF := float64(cell)
 		half := cellF / 2.0
-		n := len(seaRunes) - 1
 		hurryBoost := 0.0
 		if v.Running && v.RemainSec > 0 && v.RemainSec <= 60 {
 			hurryBoost = 0.08
@@ -220,6 +275,9 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 				continue
 			}
 			rowBase := (vv-wl)*1.15 + 0.42 + 0.10*math.Sin(vv*3.4+tt*0.9)
+			if rowBase+mood.Amp+0.30 < seaSurfaceH {
+				continue // whole row is above the waterline
+			}
 			rowPhase := vv*1.5 - tt*1.3
 			rowShift := math.Mod(float64(row)*0.37, 1.0) * cellF
 			dy := y - pyLocal
@@ -229,8 +287,12 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 					continue
 				}
 				uu := x / w
-				waveSin := math.Sin(uu*4.2 + rowPhase)
-				H := rowBase + 0.14*waveSin
+				waveSin := math.Sin(uu*mood.K + rowPhase)
+				H := rowBase + mood.Amp*waveSin
+				if swellAmt > 0 {
+					du := (uu - swellU) / 0.24
+					H += 0.086 * swellAmt * math.Exp(-du*du) // the passing swell lifts the surface locally
+				}
 				if v.PointerIn {
 					dx := x - pxLocal
 					distSq := dx*dx + dy*dy
@@ -240,23 +302,18 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 						H += 0.22 * falloff * falloff * math.Sin(dist*0.18-tt*5.5)
 					}
 				}
-				if H <= 0 {
+				// Nothing above the waterline, and no gaps below it: every cell under the surface
+				// carries a glyph, so the water is one continuous field of characters.
+				if H < seaSurfaceH {
 					continue
 				}
 				if H > 1 {
 					H = 1
 				}
-				dens := H * H * (3 - 2*H)
-				depthBias := 0.10 + 0.9*dens*(0.35+0.65*dens)
-				if cellHash(col*7+1, row*5+2) > depthBias {
-					continue
-				}
-				idx := max(1, int(math.Floor(H*float64(n))))
-				if idx >= len(glyphs) {
-					idx = len(glyphs) - 1
-				}
-				ci := int(math.Round((float64(idx) / float64(n)) * float64(len(colors)-1)))
-				alpha := 0.36 + 0.60*H + hurryBoost
+				depth := (H - seaSurfaceH) / (1 - seaSurfaceH) // 0 at the waterline .. 1 in deep water
+				idx := seaBodyGlyphs[min(2, int(depth*3))]
+				ci := min(len(colors)-1, 2+int(math.Round(depth*float64(len(colors)-3))))
+				alpha := 0.50 + 0.48*depth + hurryBoost
 				if v.HighContrast {
 					alpha = math.Min(1, alpha+0.22)
 				}

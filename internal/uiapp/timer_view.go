@@ -89,13 +89,8 @@ func (a *App) TimerView(c *ui.Context) {
 		remainRatio = float64(t.LeftMs) / float64(int64(t.TotalSec)*1000)
 	}
 
-	// Root card: subtle vertical paper->surface gradient
-	root := ui.Box(c).Fill().LinearGradient(ui.LinearGradient{
-		From:  p.Paper,
-		To:    p.Surface,
-		Angle: 180,
-		Oklab: true,
-	}).Border(1, p.BorderSubtle).Clip()
+	// Root card: one flat paper colour behind the sea
+	root := ui.Box(c).Fill().Background(p.Paper).Border(1, p.BorderSubtle).Clip()
 	px, py, pIn := root.PointerPosition()
 	if root.Clicked() && !a.timerShowSetup && !a.timerShowSet && !a.timerDoneVisible {
 		a.handleOceanClick(px, py)
@@ -125,12 +120,6 @@ func (a *App) TimerView(c *ui.Context) {
 			Now:          a.liveNow(),
 			OnEncounter:  a.recordNaturalEncounter,
 		})
-
-		// Layer 1: Top & bottom translucent soft veils (strictly behind foreground controls!)
-		ui.Box(c).Absolute().Top(0).Left(0).Right(0).HeightPercent(16).ZIndex(1).PassThrough().
-			LinearGradient(ui.LinearGradient{From: p.TimerVeilTop, To: p.TimerVeilZero, Angle: 180})
-		ui.Box(c).Absolute().Bottom(0).Left(0).Right(0).HeightPercent(24).ZIndex(1).PassThrough().
-			LinearGradient(ui.LinearGradient{From: p.TimerVeilZero, To: p.TimerVeilBot, Angle: 180})
 
 		// Layer 2: Main foreground column (explicit Absolute + ZIndex(2) so it ALWAYS sits cleanly ABOVE the sea & veils)
 		ui.Column(c).Absolute().Top(0).Right(0).Bottom(0).Left(0).ZIndex(2).Children(func() {
@@ -171,24 +160,12 @@ func (a *App) TimerView(c *ui.Context) {
 				}
 			})
 
-			// Center countdown numeral floating directly over the character sea with soft halo + rolling digits
+			// Center countdown numeral floating directly over the character sea, rolling digits
 			ui.Box(c).Grow(1).FillWidth().Center().Children(func() {
 				timeStr := dateutil.FmtDuration(t.LeftSec, prefs.ShowSeconds)
 				numWrap := ui.Column(c).Center().Gap(6).Padding(12, 22)
 				if prefs.HighContrast {
 					numWrap.Radius(16).Background(p.TimerHCBack).Border(1, p.Line)
-				} else {
-					glowCenter := p.Paper.Alpha(0.76)
-					glowEdge := p.Paper.Alpha(0.0)
-					numWrap.Draw(func(pt *ui.Painter, r ui.Rect) {
-						pt.FillRadialGradient(r, ui.RadialGradient{
-							Stops: []ui.GradientStop{
-								{Color: glowCenter, At: 0.0},
-								{Color: p.Paper.Alpha(0.45), At: 0.55},
-								{Color: glowEdge, At: 1.0},
-							},
-						}, 0)
-					})
 				}
 				numWrap.Children(func() {
 					if t.Task != nil && t.Task.Title != "" {
