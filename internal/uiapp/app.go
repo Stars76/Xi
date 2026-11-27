@@ -75,6 +75,8 @@ type App struct {
 	todoScroll     ui.ScrollState
 	lastUndoTask   *store.Task
 	lastUndoIndex  int
+	bindPickOpen   bool      // Today page: "which task is this round for?" picker
+	resetArmedAt   time.Time // first click on 重置 during an active round arms a confirm step
 
 	// Settings view
 	newDailyDraft string
@@ -1005,17 +1007,34 @@ func (a *App) StartDesktop(compactOnly bool, startHidden bool) {
 }
 
 // StartTaskFocus binds a task to the focus timer and enters the unified in-window Focus Stage.
+const resetConfirmWindow = 4 * time.Second
+
+// resetArmed reports whether the reset button is currently waiting for its confirming second click.
+func (a *App) resetArmed() bool {
+	return !a.resetArmedAt.IsZero() && time.Since(a.resetArmedAt) < resetConfirmWindow
+}
+
+// requestReset resets immediately when no round is in progress. An in-progress round is recorded as
+// abandoned by a reset, so it needs a second click within resetConfirmWindow.
+func (a *App) requestReset(snap timer.Snapshot) {
+	if snap.Timer.StartedAt == "" || a.resetArmed() {
+		a.resetArmedAt = time.Time{}
+		a.Timer.Command("reset")
+		return
+	}
+	a.resetArmedAt = time.Now()
+	time.AfterFunc(resetConfirmWindow+50*time.Millisecond, a.InvalidateAll)
+}
+
 func (a *App) StartTaskFocus(c *ui.Context, t store.Task) {
-	snap := a.Timer.Snapshot()
-	alreadyBound := snap.Timer.StartedAt != "" && snap.Timer.Phase == "focus" && snap.Timer.Task != nil && snap.Timer.Task.ID == t.ID && snap.Timer.Task.Day == a.Todo.ViewDay()
-	res := a.Timer.StartTask(t.ID, a.Todo.ViewDay(), !alreadyBound)
+	// One click starts the round with the current duration/plan; the plan can still be changed from the Focus Clock.
+	res := a.Timer.StartTask(t.ID, a.Todo.ViewDay(), false)
 	if !res.OK {
 		c.Toast(res.Error)
 		return
 	}
-	if !alreadyBound {
-		a.timerShowSetup = true
-	}
+	a.timerShowSetup = false
+	a.bindPickOpen = false
 	a.timerDoneVisible = false
 	a.activeOverlay = "focus"
 	if a.TimerWin != nil && !a.TimerWin.IsDestroyed() {

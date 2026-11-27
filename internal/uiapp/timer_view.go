@@ -411,9 +411,16 @@ func (a *App) renderTimerDock(c *ui.Context, snap timer.Snapshot, p Palette) {
 			}
 
 			if !t.Idle {
-				rstBtn := ui.Button(c, "重置").Height(32).Padding(0, 10).Radius(9).FontSize(12.5).Transition(colorFadeFast)
+				rstText := "重置"
+				if a.resetArmed() {
+					rstText = "确认放弃"
+				}
+				rstBtn := ui.Button(c, rstText).Height(32).Padding(0, 10).Radius(9).FontSize(12.5).Transition(colorFadeFast)
+				if a.resetArmed() {
+					rstBtn.TextColor(p.Danger)
+				}
 				if rstBtn.Clicked() {
-					a.Timer.Command("reset")
+					a.requestReset(snap)
 				}
 			}
 		})
@@ -629,7 +636,6 @@ func (a *App) renderTimerSettingsOverlay(c *ui.Context, snap timer.Snapshot, p P
 }
 
 func (a *App) renderTimerDoneOverlay(c *ui.Context, p Palette) {
-	ev := a.timerDoneEv
 	backdrop := ui.Column(c.Key("timer-done-backdrop")).Absolute().Top(0).Right(0).Bottom(0).Left(0).ZIndex(10).
 		Background(p.TimerDoneBg).Center().Padding(16)
 
@@ -668,88 +674,98 @@ func (a *App) renderTimerDoneOverlay(c *ui.Context, p Palette) {
 		ui.Column(c.Key("timer-done-card")).FillWidth().MaxWidth(290).Padding(20, 18).Radius(16).Background(p.Paper).
 			Border(1, p.Line).Shadow(0, 12, 28, 0, p.ElevatedShadow).
 			Transition(timerDoneCardMotion).Center().Gap(10).Children(func() {
-			emoji := "🎉"
-			title := "专注完成！"
-			sub := fmt.Sprintf("本轮 %d 分钟 · 今日第 %d 轮", ev.PlannedMinutes, ev.Round)
-			if ev.Phase != "focus" {
-				emoji = "☕"
-				title = "休息结束"
-				sub = fmt.Sprintf("今日已专注 %d 分钟，准备好再来一轮了吗", ev.MinutesToday)
-			}
-			ui.Text(c, emoji).FontSize(34)
-			ui.Text(c, title).FontSize(19).FontWeight(800).TextColor(p.Navy)
-			ui.Text(c, sub).FontSize(12.5).TextColor(p.Ink3)
-
-			// Close-loop: allow checking off bound todo task directly upon finishing focus!
-			if ev.Phase == "focus" && ev.TaskID != "" {
-				taskDay := ev.Day
-				if taskDay == "" {
-					taskDay = a.Todo.TodayKey()
-				}
-				var boundPending bool
-				for _, tk := range a.Todo.TasksForDay(taskDay) {
-					if tk.ID == ev.TaskID && !tk.Done {
-						boundPending = true
-						break
-					}
-				}
-				if boundPending {
-					doneTaskBtn := ui.ButtonBase(c).FillWidth().Height(34).Radius(999).Center().
-						Background(p.SuccessSoft).Border(1, p.SuccessLine).Transition(colorFadeFast).
-						Cursor(ui.CursorPointer).Label("完成绑定任务")
-					doneTaskBtn.Children(func() {
-						ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-							ui.Icon(c, IconCheck).Size(14, 14).TextColor(p.Success)
-							lbl := "完成此任务并打勾"
-							if ev.TaskTitle != "" {
-								lbl = "勾选完成：" + ev.TaskTitle
-							}
-							ui.Text(c, lbl).FontSize(12).FontWeight(700).TextColor(p.Success).MaxWidth(210).SingleLine()
-						})
-					})
-					if doneTaskBtn.Clicked() {
-						a.Todo.ToggleTaskInDay(taskDay, ev.TaskID)
-						a.markStatsDirty()
-						a.InvalidateAll()
-						c.Toast("已勾选完成任务")
-					}
-				}
-			}
-
-			detailBtn := ui.Button(c, "查看本轮记录").Padding(4, 10).FontSize(11.5)
-			if detailBtn.Clicked() {
-				a.timerDoneDetail = !a.timerDoneDetail
-			}
-			if a.timerDoneDetail {
-				pauseDesc := "中途没有暂停"
-				if ev.PauseCount > 0 {
-					pauseDesc = fmt.Sprintf("暂停 %d 次 · 共 %d 分钟", ev.PauseCount, (ev.PausedMs+30000)/60000)
-				}
-				ui.Column(c).FillWidth().Padding(8, 10).Radius(8).Background(p.TimerDoneDetail).Border(1, p.BorderSubtle).Gap(2).Children(func() {
-					ui.Textf(c, "实际用时 %d 分钟 · %s", ev.ActualMinutes, pauseDesc).FontSize(12).TextColor(p.Ink3)
-				})
-			}
-
-			ui.Column(c).FillWidth().Gap(6).Children(func() {
-				again := ui.PrimaryButton(c, "再来一轮").FillWidth().Height(34).Radius(999)
-				if again.Clicked() {
-					a.timerDoneVisible = false
-					a.Timer.Command("setPhase", timer.CmdPayload{Phase: "focus"})
-					a.Timer.Command("start")
-				}
-				if ev.Phase == "focus" {
-					brk := ui.Button(c, "休息 5 分钟").FillWidth().Height(34).Radius(999)
-					if brk.Clicked() {
-						a.timerDoneVisible = false
-						a.Timer.Command("setPhase", timer.CmdPayload{Phase: "short"})
-						a.Timer.Command("start")
-					}
-				}
-				ret := ui.Button(c, "返回专注钟").FillWidth().Height(34).Radius(999)
-				if ret.Clicked() {
-					a.timerDoneVisible = false
-				}
-			})
+			a.renderTimerDoneBody(c, p, "返回专注钟")
 		})
+	})
+}
+
+// renderTimerDoneBody renders the round-finished summary and next-step actions. It is shared by the
+// Focus Clock / PiP overlay and by the main-window modal shown on every other page.
+func (a *App) renderTimerDoneBody(c *ui.Context, p Palette, closeLabel string) {
+	ev := a.timerDoneEv
+	if ev == nil {
+		return
+	}
+	emoji := "🎉"
+	title := "专注完成！"
+	sub := fmt.Sprintf("本轮 %d 分钟 · 今日第 %d 轮", ev.PlannedMinutes, ev.Round)
+	if ev.Phase != "focus" {
+		emoji = "☕"
+		title = "休息结束"
+		sub = fmt.Sprintf("今日已专注 %d 分钟，准备好再来一轮了吗", ev.MinutesToday)
+	}
+	ui.Text(c, emoji).FontSize(34)
+	ui.Text(c, title).FontSize(19).FontWeight(800).TextColor(p.Navy)
+	ui.Text(c, sub).FontSize(12.5).TextColor(p.Ink3)
+
+	// Close-loop: allow checking off bound todo task directly upon finishing focus!
+	if ev.Phase == "focus" && ev.TaskID != "" {
+		taskDay := ev.Day
+		if taskDay == "" {
+			taskDay = a.Todo.TodayKey()
+		}
+		var boundPending bool
+		for _, tk := range a.Todo.TasksForDay(taskDay) {
+			if tk.ID == ev.TaskID && !tk.Done {
+				boundPending = true
+				break
+			}
+		}
+		if boundPending {
+			doneTaskBtn := ui.ButtonBase(c).FillWidth().Height(34).Radius(999).Center().
+				Background(p.SuccessSoft).Border(1, p.SuccessLine).Transition(colorFadeFast).
+				Cursor(ui.CursorPointer).Label("完成绑定任务")
+			doneTaskBtn.Children(func() {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, IconCheck).Size(14, 14).TextColor(p.Success)
+					lbl := "完成此任务并打勾"
+					if ev.TaskTitle != "" {
+						lbl = "勾选完成：" + ev.TaskTitle
+					}
+					ui.Text(c, lbl).FontSize(12).FontWeight(700).TextColor(p.Success).MaxWidth(210).SingleLine()
+				})
+			})
+			if doneTaskBtn.Clicked() {
+				a.Todo.ToggleTaskInDay(taskDay, ev.TaskID)
+				a.markStatsDirty()
+				a.InvalidateAll()
+				c.Toast("已勾选完成任务")
+			}
+		}
+	}
+
+	detailBtn := ui.Button(c, "查看本轮记录").Padding(4, 10).FontSize(11.5)
+	if detailBtn.Clicked() {
+		a.timerDoneDetail = !a.timerDoneDetail
+	}
+	if a.timerDoneDetail {
+		pauseDesc := "中途没有暂停"
+		if ev.PauseCount > 0 {
+			pauseDesc = fmt.Sprintf("暂停 %d 次 · 共 %d 分钟", ev.PauseCount, (ev.PausedMs+30000)/60000)
+		}
+		ui.Column(c).FillWidth().Padding(8, 10).Radius(8).Background(p.TimerDoneDetail).Border(1, p.BorderSubtle).Gap(2).Children(func() {
+			ui.Textf(c, "实际用时 %d 分钟 · %s", ev.ActualMinutes, pauseDesc).FontSize(12).TextColor(p.Ink3)
+		})
+	}
+
+	ui.Column(c).FillWidth().Gap(6).Children(func() {
+		again := ui.PrimaryButton(c, "再来一轮").FillWidth().Height(34).Radius(999)
+		if again.Clicked() {
+			a.timerDoneVisible = false
+			a.Timer.Command("setPhase", timer.CmdPayload{Phase: "focus"})
+			a.Timer.Command("start")
+		}
+		if ev.Phase == "focus" {
+			brk := ui.Button(c, "休息 5 分钟").FillWidth().Height(34).Radius(999)
+			if brk.Clicked() {
+				a.timerDoneVisible = false
+				a.Timer.Command("setPhase", timer.CmdPayload{Phase: "short"})
+				a.Timer.Command("start")
+			}
+		}
+		ret := ui.Button(c, closeLabel).FillWidth().Height(34).Radius(999)
+		if ret.Clicked() {
+			a.timerDoneVisible = false
+		}
 	})
 }

@@ -262,14 +262,18 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 						rstBtn := ui.ButtonBase(c).Height(40).Padding(0, 15).Radius(11).
 							Background(p.TimerChipBg).Border(1, p.Line).Transition(colorFadeFast).
 							Cursor(ui.CursorPointer).Label("重置计时")
-						if rstBtn.Hovered() {
+						rstText, rstCol := "重置", p.Ink2
+						if a.resetArmed() {
+							rstText, rstCol = "确认放弃本轮", p.Danger
+							rstBtn.Border(1, p.Danger).Tooltip("本轮会记为中断，再点一次确认")
+						} else if rstBtn.Hovered() {
 							rstBtn.Border(1, p.Blue)
 						}
 						rstBtn.Children(func() {
-							ui.Text(c, "重置").FontSize(13.5).FontWeight(600).TextColor(p.Ink2).SingleLine()
+							ui.Text(c, rstText).FontSize(13.5).FontWeight(600).TextColor(rstCol).SingleLine()
 						})
 						if rstBtn.Clicked() {
-							a.Timer.Command("reset")
+							a.requestReset(snap)
 						}
 					}
 				})

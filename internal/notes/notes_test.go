@@ -12,6 +12,8 @@ import (
 func TestRenderAndBuildNote(t *testing.T) {
 	dir := t.TempDir()
 	st := store.NewStore(dir, store.NewLogger(filepath.Join(dir, "logs")))
+	// Cancel the debounced disk flush before TempDir cleanup runs, otherwise a late write races the removal.
+	t.Cleanup(func() { _ = st.Flush() })
 	st.Load()
 
 	day := "2026-09-09"

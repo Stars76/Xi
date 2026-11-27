@@ -121,7 +121,14 @@ func TestTimerViewPlanAndControls(t *testing.T) {
 	if a.Timer.Snapshot().Timer.Running || !tt.HasText("继续") {
 		t.Fatal("expected timer paused and 继续 button visible")
 	}
+	// Resetting an in-progress round needs a confirming second click (it records an abandoned round).
 	if err := tt.Click("重置"); err != nil {
+		t.Fatal(err)
+	}
+	if a.Timer.Snapshot().Timer.Idle || len(a.Timer.History()) != 0 || !tt.HasText("确认放弃") {
+		t.Fatalf("expected first reset click to only arm confirmation, hist=%+v", a.Timer.History())
+	}
+	if err := tt.Click("确认放弃"); err != nil {
 		t.Fatal(err)
 	}
 	if !a.Timer.Snapshot().Timer.Idle || len(a.Timer.History()) != 1 || a.Timer.History()[0].Result != "abandoned" {
@@ -527,5 +534,94 @@ func TestDoneGroupFoldAndSharedPiPOcean(t *testing.T) {
 	pip.Frame()
 	if a.stageSea.ActiveEncounterKind(a.now()) != EncounterWhale {
 		t.Fatal("expected PiP TimerView to share stageSea encounter")
+	}
+}
+
+func TestP0FlowFixes(t *testing.T) {
+	a := newUITestApp(t)
+	tt := ui.NewTester(a.MainView, 1060, 780)
+	today := a.Todo.TodayKey()
+
+	// Planning ahead: tomorrow is reachable from Today and accepts new tasks.
+	if err := tt.Click("后一天"); err != nil {
+		t.Fatal(err)
+	}
+	tomorrow := a.Todo.ViewDay()
+	if tomorrow <= today || !tt.HasText("明日") {
+		t.Fatalf("expected to view tomorrow, viewDay=%s today=%s texts=%v", tomorrow, today, tt.Texts())
+	}
+	if err := tt.Click("新任务"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("明天的计划")
+	tt.Key(0, ui.KeyEnter)
+	if got := a.Todo.TasksForDay(tomorrow); len(got) != 1 || got[0].Title != "明天的计划" {
+		t.Fatalf("expected task planned for tomorrow, got %+v", got)
+	}
+	a.Todo.Init() // reload from disk + rollover must leave future tasks in place
+	if got := a.Todo.TasksForDay(tomorrow); len(got) != 1 {
+		t.Fatalf("expected future task to survive reload/rollover, got %+v", got)
+	}
+	if len(a.Todo.TasksForDay(today)) != 0 {
+		t.Fatalf("future task must not leak into today: %+v", a.Todo.TasksForDay(today))
+	}
+	a.Todo.GoToday()
+
+	// Starting from Today with open tasks and nothing bound asks which task the round is for.
+	task := a.Todo.AddTask("写周报")
+	if task == nil {
+		t.Fatal("add task failed")
+	}
+	taskID := task.ID
+	tt.Frame()
+	if err := tt.Click("开始专注"); err != nil {
+		t.Fatal(err)
+	}
+	if a.Timer.Snapshot().Timer.Running || !tt.HasText("这一轮专注做哪件事？") {
+		t.Fatalf("expected bind picker instead of an unbound start, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("专注 写周报"); err != nil {
+		t.Fatal(err)
+	}
+	snap := a.Timer.Snapshot()
+	if !snap.Timer.Running || snap.Timer.Task == nil || snap.Timer.Task.ID != taskID {
+		t.Fatalf("expected round running and bound to picked task, got %+v", snap.Timer)
+	}
+
+	// A round finishing while on Today (not the Focus Clock page) still surfaces the completion card.
+	a.timerDoneEv = &timer.Event{Type: "done", Phase: "focus", PlannedMinutes: 25, Round: 1, TaskID: taskID, TaskTitle: "写周报", Day: today}
+	a.timerDoneVisible = true
+	tt.Frame()
+	if !tt.HasText("专注完成！") {
+		t.Fatalf("expected completion card on Today page, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("知道了"); err != nil {
+		t.Fatal(err)
+	}
+	if a.timerDoneVisible {
+		t.Fatal("expected completion card dismissed")
+	}
+
+	// Reset and verify the task-row focus button starts in one click (no plan-picker detour).
+	a.Timer.Command("reset")
+	a.Timer.Command("reset")
+	if !a.Timer.Snapshot().Timer.Idle {
+		t.Fatal("expected idle timer after reset")
+	}
+	tt.Frame()
+	r, ok := tt.Find("写周报")
+	if !ok {
+		t.Fatalf("task row not rendered, texts=%v", tt.Texts())
+	}
+	tt.Move(r.X+r.W/2, r.Y+r.H/2) // row actions are revealed on hover
+	if err := tt.Click("开始专注 写周报"); err != nil {
+		t.Fatal(err)
+	}
+	snap = a.Timer.Snapshot()
+	if !snap.Timer.Running || snap.Timer.Task == nil || snap.Timer.Task.ID != taskID || a.timerShowSetup {
+		t.Fatalf("expected one-click start bound to task without setup overlay, timer=%+v setup=%v", snap.Timer, a.timerShowSetup)
+	}
+	if a.activeOverlay != "focus" {
+		t.Fatalf("expected to land on Focus Clock, overlay=%q", a.activeOverlay)
 	}
 }

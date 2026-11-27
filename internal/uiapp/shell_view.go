@@ -114,6 +114,8 @@ func (a *App) MainView(c *ui.Context) {
 			a.Timer.ClearAwaitPlan()
 		case a.timerDoneVisible:
 			a.timerDoneVisible = false
+		case a.bindPickOpen:
+			a.bindPickOpen = false
 		case a.alarmTaskID != "":
 			a.alarmTaskID = ""
 		case a.editingTaskID != "":
@@ -275,6 +277,15 @@ func (a *App) MainView(c *ui.Context) {
 
 	a.renderImportModal(c, p)
 	a.renderClearAlert(c)
+	// The Focus Clock page draws its own completion overlay; every other page gets it as a modal
+	// so a finished round is never silent while the user is on Today / Stats / Settings.
+	if a.timerDoneVisible && a.timerDoneEv != nil && a.activeOverlay != "focus" {
+		ui.Modal(c, &a.timerDoneVisible, func() {
+			ui.Column(c.Key("shell-done-card")).Width(290).Center().Gap(10).Children(func() {
+				a.renderTimerDoneBody(c, p, "知道了")
+			})
+		})
+	}
 }
 
 func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
