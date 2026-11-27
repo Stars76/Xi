@@ -170,7 +170,7 @@ func (a *App) TimerView(c *ui.Context) {
 				numWrap.Children(func() {
 					if t.Task != nil && t.Task.Title != "" {
 						ui.Row(c).Padding(3, 10).Radius(999).Background(p.TimerChipBg).Border(1, p.BorderSubtle).Children(func() {
-							ui.Text(c, t.Task.Title).FontSize(11.5).FontWeight(600).TextColor(p.Navy).MaxWidth(210).SingleLine()
+							ui.Text(c, t.Task.Title).FontSize(12).FontWeight(600).TextColor(p.Navy).MaxWidth(210).SingleLine()
 						})
 					}
 					weight := 600
@@ -187,7 +187,7 @@ func (a *App) TimerView(c *ui.Context) {
 							TextShadow(0, 0, 10, p.TimerNumGlow)
 					}
 					if snap.ClockJumpAt > 0 {
-						ui.Text(c, "已校对系统时间跳变").FontSize(10.5).TextColor(p.WarnInk)
+						ui.Text(c, "已校对系统时间跳变").FontSize(11).TextColor(p.WarnInk)
 					}
 				})
 			})
@@ -356,7 +356,7 @@ func (a *App) renderTimerDock(c *ui.Context, snap timer.Snapshot, p Palette) {
 			})
 			ui.Spacer(c)
 
-			setupBtn := ui.Button(c, setupText).Height(32).Padding(0, 10).Radius(9).FontSize(12.5).Transition(colorFadeFast)
+			setupBtn := ui.Button(c, setupText).Height(32).Padding(0, 10).Radius(9).FontSize(13).Transition(colorFadeFast)
 			if setupBtn.Clicked() {
 				a.timerShowSetup = !a.timerShowSetup
 				a.timerShowSet = false
@@ -392,7 +392,7 @@ func (a *App) renderTimerDock(c *ui.Context, snap timer.Snapshot, p Palette) {
 				if a.resetArmed() {
 					rstText = "确认放弃"
 				}
-				rstBtn := ui.Button(c, rstText).Height(32).Padding(0, 10).Radius(9).FontSize(12.5).Transition(colorFadeFast)
+				rstBtn := ui.Button(c, rstText).Height(32).Padding(0, 10).Radius(9).FontSize(13).Transition(colorFadeFast)
 				if a.resetArmed() {
 					rstBtn.TextColor(p.Danger)
 				}
@@ -411,7 +411,7 @@ func (a *App) renderTimerSetupOverlay(c *ui.Context, snap timer.Snapshot, p Pale
 	renderBody := func(card ui.Element) {
 		card.Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "选择专注计划").FontSize(15).FontWeight(700).TextColor(p.Navy)
+				ui.Text(c, "选择专注计划").FontSize(16).FontWeight(700).TextColor(p.Navy)
 				ui.Spacer(c)
 				cls := timerBarBtn(c, IconClose, "关闭计划选择", "关闭", false, false, p).Size(26, 26)
 				if cls.Clicked() {
@@ -421,7 +421,7 @@ func (a *App) renderTimerSetupOverlay(c *ui.Context, snap timer.Snapshot, p Pale
 			})
 
 			ui.Scroll(c.Key("setup-scroll")).Grow(1).MinHeight(0).Gap(10).Children(func() {
-				ui.Text(c, "多轮番茄计划：专注 → 短休 → … → 长休，全程自动推进").FontSize(11.5).TextColor(p.Ink3)
+				ui.Text(c, "多轮番茄计划：专注 → 短休 → … → 长休，全程自动推进").FontSize(12).TextColor(p.Ink3)
 				ui.Grid(c).Columns(2).Gap(8).FillWidth().Children(func() {
 					for _, pl := range timer.DefaultPlans {
 						active := t.Plan != nil && t.Plan.Key == pl.Key
@@ -436,7 +436,7 @@ func (a *App) renderTimerSetupOverlay(c *ui.Context, snap timer.Snapshot, p Pale
 						pc.Children(func() {
 							ui.Column(c).Gap(2).Children(func() {
 								ui.Text(c, pl.Name).FontSize(13).FontWeight(700).TextColor(p.Navy)
-								ui.Textf(c, "%d 专注 + %d 短休 ×%d 轮", pl.Focus, pl.Short, pl.Rounds).FontSize(10.5).TextColor(p.Ink3)
+								ui.Textf(c, "%d 专注 + %d 短休 ×%d 轮", pl.Focus, pl.Short, pl.Rounds).FontSize(11).TextColor(p.Ink3)
 							})
 						})
 						if pc.Clicked() {
@@ -449,10 +449,10 @@ func (a *App) renderTimerSetupOverlay(c *ui.Context, snap timer.Snapshot, p Pale
 					}
 				})
 
-				ui.Text(c, "或选单段专注").FontSize(11.5).TextColor(p.Ink3)
+				ui.Text(c, "或选单段专注").FontSize(12).TextColor(p.Ink3)
 				ui.Row(c).Gap(6).FillWidth().Children(func() {
 					for _, mins := range []int{25, 45} {
-						b := ui.Button(c.Key(fmt.Sprintf("pmin-%d", mins)), fmt.Sprintf("%d 分钟", mins)).Grow(1).Padding(7, 0).FontSize(12.5)
+						b := ui.Button(c.Key(fmt.Sprintf("pmin-%d", mins)), fmt.Sprintf("%d 分钟", mins)).Grow(1).Padding(7, 0).FontSize(13)
 						if t.Phase == "focus" && t.Plan == nil && t.TotalSec == mins*60 {
 							b.Background(p.AccentSoft).Border(1, p.Blue)
 						}
@@ -467,12 +467,12 @@ func (a *App) renderTimerSetupOverlay(c *ui.Context, snap timer.Snapshot, p Pale
 				})
 
 				ui.Row(c).Gap(6).FillWidth().Children(func() {
-					sBtn := ui.Button(c, "短休 5 分钟").Grow(1).Padding(7, 0).FontSize(12.5)
+					sBtn := ui.Button(c, "短休 5 分钟").Grow(1).Padding(7, 0).FontSize(13)
 					if sBtn.Clicked() {
 						a.Timer.Command("setPhase", timer.CmdPayload{Phase: "short"})
 						a.timerShowSetup = false
 					}
-					lBtn := ui.Button(c, "长休 15 分钟").Grow(1).Padding(7, 0).FontSize(12.5)
+					lBtn := ui.Button(c, "长休 15 分钟").Grow(1).Padding(7, 0).FontSize(13)
 					if lBtn.Clicked() {
 						a.Timer.Command("setPhase", timer.CmdPayload{Phase: "long"})
 						a.timerShowSetup = false
@@ -525,7 +525,7 @@ func (a *App) renderTimerSettingsOverlay(c *ui.Context, snap timer.Snapshot, p P
 	renderBody := func(card ui.Element) {
 		card.Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "专注钟设置").FontSize(15).FontWeight(700).TextColor(p.Navy)
+				ui.Text(c, "专注钟设置").FontSize(16).FontWeight(700).TextColor(p.Navy)
 				ui.Spacer(c)
 				cls := timerBarBtn(c, IconClose, "关闭专注钟设置", "关闭", false, false, p).Size(26, 26)
 				if cls.Clicked() {
@@ -680,8 +680,8 @@ func (a *App) renderTimerDoneBody(c *ui.Context, p Palette, closeLabel string) {
 		sub = fmt.Sprintf("今日已专注 %d 分钟，准备好再来一轮了吗", ev.MinutesToday)
 	}
 	ui.Text(c, emoji).FontSize(34)
-	ui.Text(c, title).FontSize(19).FontWeight(800).TextColor(p.Navy)
-	ui.Text(c, sub).FontSize(12.5).TextColor(p.Ink3)
+	ui.Text(c, title).FontSize(18).FontWeight(800).TextColor(p.Navy)
+	ui.Text(c, sub).FontSize(13).TextColor(p.Ink3)
 
 	// Close-loop: allow checking off bound todo task directly upon finishing focus!
 	if ev.Phase == "focus" && ev.TaskID != "" {
@@ -719,7 +719,7 @@ func (a *App) renderTimerDoneBody(c *ui.Context, p Palette, closeLabel string) {
 		}
 	}
 
-	detailBtn := ui.Button(c, "查看本轮记录").Padding(4, 10).FontSize(11.5)
+	detailBtn := ui.Button(c, "查看本轮记录").Padding(4, 10).FontSize(12)
 	if detailBtn.Clicked() {
 		a.timerDoneDetail = !a.timerDoneDetail
 	}

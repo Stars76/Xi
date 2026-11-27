@@ -162,8 +162,8 @@ func (a *App) MainView(c *ui.Context) {
 					ui.Image(c, logo).Size(20, 20).Radius(5)
 				}
 				ui.RichText(c,
-					ui.Span{Text: "526", Weight: 800, Size: 16.5, Color: p.Navy},
-					ui.Span{Text: "Hz", Weight: 800, Size: 16.5, Color: p.Blue},
+					ui.Span{Text: "526", Weight: 800, Size: 16, Color: p.Navy},
+					ui.Span{Text: "Hz", Weight: 800, Size: 16, Color: p.Blue},
 				).Font(FontNum).LetterSpacing(-0.2)
 			})
 
@@ -365,7 +365,7 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette, rail 
 							col = p.Navy
 						}
 						ui.Icon(c, icon).Size(16.5, 16.5).TextColor(col)
-						ui.Text(c, label).FontSize(13.5).FontWeight(weight).TextColor(col).Grow(1).SingleLine()
+						ui.Text(c, label).FontSize(14).FontWeight(weight).TextColor(col).Grow(1).SingleLine()
 						if badge != "" {
 							bg, fg := p.CreditBg, p.Ink2
 							if badgeLive {
@@ -485,8 +485,8 @@ func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {
 		Transition(drawerTransition).Gap(12).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "今日时间轴").FontSize(15).FontWeight(700).TextColor(p.Navy)
-				ui.Textf(c, "共 %d 段 · %d 分钟", len(blocks), totalM).Font(FontMono).FontSize(11.5).TextColor(p.Ink3)
+				ui.Text(c, "今日时间轴").FontSize(16).FontWeight(700).TextColor(p.Navy)
+				ui.Textf(c, "共 %d 段 · %d 分钟", len(blocks), totalM).Font(FontMono).FontSize(12).TextColor(p.Ink3)
 			})
 			cls := iconBtn(c, IconClose, "收起时间轴", "收起", p).Size(28, 28)
 			if cls.Clicked() {
@@ -501,8 +501,8 @@ func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {
 					ui.Box(c).Size(140, 42).Draw(func(pt *ui.Painter, r ui.Rect) {
 						a.miniSea.DrawCalmWave(pt, r, p.Dark)
 					})
-					ui.Text(c, "今天还没有专注时段").FontSize(12.5).FontWeight(600).TextColor(p.Ink3)
-					ui.Text(c, "进入专注钟或点击下方补录").FontSize(11.5).TextColor(p.Ink4)
+					ui.Text(c, "今天还没有专注时段").FontSize(13).FontWeight(600).TextColor(p.Ink3)
+					ui.Text(c, "进入专注钟或点击下方补录").FontSize(12).TextColor(p.Ink4)
 				})
 				return
 			}
@@ -534,7 +534,7 @@ func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {
 								ui.Spacer(c)
 								ui.Text(c, dur).Font(FontMono).FontSize(11).TextColor(p.Ink3).SingleLine()
 							})
-							ui.Text(c, bCopy.Title).FontSize(12.5).FontWeight(600).TextColor(p.Ink).SingleLine()
+							ui.Text(c, bCopy.Title).FontSize(13).FontWeight(600).TextColor(p.Ink).SingleLine()
 						})
 					})
 				})
@@ -549,7 +549,7 @@ func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {
 			}
 		})
 
-		fullBtn := ui.Button(c, "查看完整 24h 时间轴").FillWidth().Height(34).Radius(9).FontSize(12.5)
+		fullBtn := ui.Button(c, "查看完整 24h 时间轴").FillWidth().Height(34).Radius(9).FontSize(13)
 		if fullBtn.Clicked() {
 			a.tlDayKey = today
 			a.statsTab = 0
@@ -618,8 +618,8 @@ func (a *App) renderShellTimerChip(c *ui.Context, snap timer.Snapshot, p Palette
 				dot.Opacity(0.35 + 0.65*pulse)
 			}
 			if t.Task != nil && t.Task.Title != "" {
-				ui.Text(c, t.Task.Title).FontSize(12.5).FontWeight(700).TextColor(p.Navy).MaxWidth(120).SingleLine()
-				ui.Text(c, "·").FontSize(12.5).TextColor(p.Ink4)
+				ui.Text(c, t.Task.Title).FontSize(13).FontWeight(700).TextColor(p.Navy).MaxWidth(120).SingleLine()
+				ui.Text(c, "·").FontSize(13).TextColor(p.Ink4)
 			}
 			ui.Text(c, statusText).Font(FontMono).FontSize(12).FontWeight(700).TextColor(textCol).SingleLine()
 		})

@@ -102,7 +102,7 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 						pulse := dot.Loop("stage-dot-pulse", 1600*time.Millisecond, ui.EaseInOut)
 						dot.Opacity(0.35 + 0.65*pulse)
 					}
-					ui.Text(c, stText).FontSize(11.5).FontWeight(700).TextColor(p.Ink2).SingleLine()
+					ui.Text(c, stText).FontSize(12).FontWeight(700).TextColor(p.Ink2).SingleLine()
 				})
 
 				ui.Spacer(c)
@@ -182,7 +182,7 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 						planBtn.Border(1, p.Blue)
 					}
 					planBtn.Children(func() {
-						ui.Text(c, setupText).FontSize(13.5).FontWeight(600).TextColor(p.Ink).SingleLine()
+						ui.Text(c, setupText).FontSize(14).FontWeight(600).TextColor(p.Ink).SingleLine()
 					})
 					if planBtn.Clicked() {
 						a.timerShowSetup = !a.timerShowSetup
@@ -212,7 +212,7 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 							rstBtn.Border(1, p.Blue)
 						}
 						rstBtn.Children(func() {
-							ui.Text(c, rstText).FontSize(13.5).FontWeight(600).TextColor(rstCol).SingleLine()
+							ui.Text(c, rstText).FontSize(14).FontWeight(600).TextColor(rstCol).SingleLine()
 						})
 						if rstBtn.Clicked() {
 							a.requestReset(snap)
@@ -260,7 +260,7 @@ func stageToolBtn(c *ui.Context, icon *ui.SVG, text, label, tip string, active b
 	b.Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icon).Size(14, 14).TextColor(p.BlueDeep)
-			ui.Text(c, text).FontSize(12.5).FontWeight(600).TextColor(p.Navy).SingleLine()
+			ui.Text(c, text).FontSize(13).FontWeight(600).TextColor(p.Navy).SingleLine()
 		})
 	})
 	return b
@@ -282,8 +282,8 @@ func (a *App) renderStageBoundTaskCard(c *ui.Context, taskDay string, task store
 				a.markStatsDirty()
 			}
 			ui.Column(c).Grow(1).Gap(1).Children(func() {
-				ui.Text(c, "当前任务").FontSize(10.5).FontWeight(700).TextColor(p.BlueDeep)
-				ttl := ui.Text(c, task.Title).FontSize(14.5).FontWeight(700).SingleLine()
+				ui.Text(c, "当前任务").FontSize(11).FontWeight(700).TextColor(p.BlueDeep)
+				ttl := ui.Text(c, task.Title).FontSize(14).FontWeight(700).SingleLine()
 				if task.Done {
 					ttl.TextColor(p.Ink3).Strikethrough()
 				} else {
@@ -305,7 +305,7 @@ func (a *App) renderStageBoundTaskCard(c *ui.Context, taskDay string, task store
 				unbind.Border(1, p.Blue)
 			}
 			unbind.Children(func() {
-				ui.Text(c, "解绑").FontSize(11.5).FontWeight(600).TextColor(p.Ink3).SingleLine()
+				ui.Text(c, "解绑").FontSize(12).FontWeight(600).TextColor(p.Ink3).SingleLine()
 			})
 			if unbind.Clicked() {
 				a.Timer.Command("unbindTask")

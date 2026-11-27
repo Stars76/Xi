@@ -86,7 +86,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 					{"右键任务", "开始专注、加步骤、设闹钟、改标题、删除"},
 				} {
 					ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, sc[0]).Font(FontMono).FontSize(12.5).FontWeight(600).TextColor(p.BlueDeep).Width(150).SingleLine()
+						ui.Text(c, sc[0]).Font(FontMono).FontSize(13).FontWeight(600).TextColor(p.BlueDeep).Width(150).SingleLine()
 						ui.Text(c, sc[1]).FontSize(13).TextColor(p.Ink2).Grow(1)
 					})
 				}
@@ -226,19 +226,19 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 					if expB.Clicked() {
 						a.LaunchExportDialog()
 					}
-					impB := ui.Button(c, "从备份导入").Padding(6, 12).FontSize(12.5)
+					impB := ui.Button(c, "从备份导入").Padding(6, 12).FontSize(13)
 					if impB.Clicked() {
 						a.LaunchImportPicker(c)
 					}
-					bakDirB := ui.Button(c, "打开备份文件夹").Padding(6, 12).FontSize(12.5)
+					bakDirB := ui.Button(c, "打开备份文件夹").Padding(6, 12).FontSize(13)
 					if bakDirB.Clicked() {
 						_ = mygo.Shell.OpenPath(a.Store.BackupDir())
 					}
-					logDirB := ui.Button(c, "打开日志").Padding(6, 12).FontSize(12.5)
+					logDirB := ui.Button(c, "打开日志").Padding(6, 12).FontSize(13)
 					if logDirB.Clicked() {
 						mygo.Shell.ShowItemInFolder(a.Log.Path())
 					}
-					clrB := ui.Button(c, "清空全部数据").Padding(6, 12).FontSize(12.5).TextColor(p.Danger)
+					clrB := ui.Button(c, "清空全部数据").Padding(6, 12).FontSize(13).TextColor(p.Danger)
 					if clrB.Clicked() {
 						a.clearAskOpen = true
 					}
@@ -246,7 +246,7 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 
 				rec := a.recoveryInfo()
 				ui.Column(c).FillWidth().Padding(12, 14).Radius(10).Background(p.Surface).Border(1, p.LineSoft).Gap(4).Children(func() {
-					ui.Textf(c, "版本：526Hz v%s", AppVersion).Font(FontMono).FontSize(11.5).TextColor(p.Ink2)
+					ui.Textf(c, "版本：526Hz v%s", AppVersion).Font(FontMono).FontSize(12).TextColor(p.Ink2)
 					ui.Textf(c, "数据文件：%s", a.Store.File()).Font(FontMono).FontSize(11).TextColor(p.Ink3)
 					ui.Textf(c, "备份目录：%s（滚动备份 %d 份 / 损坏保留 %d 份）", a.Store.BackupDir(), len(rec.Backups), len(rec.Corrupt)).Font(FontMono).FontSize(11).TextColor(p.Ink3)
 					ui.Textf(c, "日志文件：%s", a.Log.Path()).Font(FontMono).FontSize(11).TextColor(p.Ink3)
@@ -265,7 +265,7 @@ func (a *App) renderImportModal(c *ui.Context, p Palette) {
 	ui.Modal(c, &a.importOpen, func() {
 		ui.Column(c).Width(380).Gap(10).Children(func() {
 			ui.Text(c, "选择导入方式").FontSize(16).FontWeight(700).TextColor(p.Navy)
-			ui.Text(c, "导入前会自动备份当前数据（可随时从备份目录恢复）。请选择导入方式：").FontSize(12.5).TextColor(p.Ink2)
+			ui.Text(c, "导入前会自动备份当前数据（可随时从备份目录恢复）。请选择导入方式：").FontSize(13).TextColor(p.Ink2)
 			ui.Column(c).Padding(10, 12).Radius(9).Background(p.Surface).Border(1, p.Line).Gap(3).Children(func() {
 				ui.Textf(c, "包含：%d 天 / %d 条任务 / 每日任务 %d 条", s.Days, s.Tasks, s.DailyTemplates).FontSize(12).TextColor(p.Ink)
 				ui.Textf(c, "专注历史：%d 条 · 统计：%d 轮 / %d 分钟", s.HistoryEntries, s.TimerRounds, s.TimerMinutes).FontSize(12).TextColor(p.Ink2)

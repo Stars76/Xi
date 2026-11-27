@@ -11,6 +11,14 @@ import "github.com/egoist/mygo/ui"
 //   - Every page opens with its title at the same place. Today and the Focus Clock, the two
 //     pages the app is about, carry the two-tone title; the other pages use a plain one.
 //   - Cards share one radius and one shadow; there is one primary button.
+//   - Charts are drawn with the sea's glyphs as columns of water, not with filled bars.
+// Type scale. Text is set at one of these sizes and nothing in between:
+//
+//	11  labels, badges, chart ticks        14  controls and emphasised lines
+//	12  metadata and secondary lines       16  a task line, a section or dialog title
+//	13  body text and buttons              18  a featured heading
+//
+// Page titles are 24 (26 for the two-tone ones); large numerals are sized by their own layout.
 const (
 	PagePadTop  = 18 // space between the title bar and a page's first element
 	PagePadX    = 30 // a page's side gutters

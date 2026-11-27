@@ -183,7 +183,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 										a.Todo.ShiftView(-1)
 									}
 									lbl := dateutil.DayLabel(viewDay, a.now().Year()) + " · 今天"
-									ui.Text(c, lbl).Font(FontMono).FontSize(10.5).FontWeight(600).TextColor(p.Ink2).Padding(0, 4).SingleLine()
+									ui.Text(c, lbl).Font(FontMono).FontSize(11).FontWeight(600).TextColor(p.Ink2).Padding(0, 4).SingleLine()
 									next := iconBtn(c, IconRight, "后一天", "提前安排明天", p).Size(20, 20)
 									if next.Clicked() {
 										a.bindPickOpen = false
@@ -202,7 +202,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 							} else if t.Paused {
 								statusLine = fmt.Sprintf("已暂停 · 今日专注 %d 分钟 · %d/%d 完成", snap.Stats.Minutes, doneCount, totalCount)
 							}
-							ui.Text(c, statusLine).FontSize(12.5).TextColor(p.Ink3).SingleLine()
+							ui.Text(c, statusLine).FontSize(13).TextColor(p.Ink3).SingleLine()
 						})
 
 						// Right: pure countdown on paper + clean action cluster
@@ -233,7 +233,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 								stageBtn.Background(p.AccentSoft).Border(1, p.Blue)
 							}
 							stageBtn.Children(func() {
-								ui.Text(c, "专注钟 →").FontSize(12.5).FontWeight(600).TextColor(p.Navy).SingleLine()
+								ui.Text(c, "专注钟 →").FontSize(13).FontWeight(600).TextColor(p.Navy).SingleLine()
 							})
 							if stageBtn.Clicked() {
 								a.activeOverlay = "focus"
@@ -285,7 +285,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 							a.Todo.ShiftView(-1)
 						}
 						lbl := dateutil.DayLabel(viewDay, a.now().Year())
-						ui.Text(c, lbl).Font(FontMono).FontSize(11.5).FontWeight(700).TextColor(p.Navy).Padding(0, 5).SingleLine()
+						ui.Text(c, lbl).Font(FontMono).FontSize(12).FontWeight(700).TextColor(p.Navy).Padding(0, 5).SingleLine()
 						next := iconBtn(c, IconRight, "后一天", "后一天", p).Size(24, 24)
 						if next.Clicked() {
 							a.Todo.ShiftView(1)
@@ -307,7 +307,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 					if isFuture {
 						dayLine = fmt.Sprintf("已安排 %d 项", totalCount)
 					}
-					ui.Text(c, dayLine).FontSize(12.5).FontWeight(600).TextColor(p.Ink3).SingleLine()
+					ui.Text(c, dayLine).FontSize(13).FontWeight(600).TextColor(p.Ink3).SingleLine()
 				})
 			}
 
@@ -324,7 +324,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 				}
 				ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Margin(0, 0, 16, 0).Children(func() {
 					in := ui.TextInput(c.Key("add-task-input"), &a.newTaskDraft).
-						Height(44).FontSize(15).Padding(10, 14).Radius(11).
+						Height(44).FontSize(16).Padding(10, 14).Radius(11).
 						Background(p.Surface2).Placeholder(placeholder).Label("新任务").Grow(1).Tooltip("Ctrl+N")
 					if a.focusNewTask {
 						a.focusNewTask = false
@@ -340,7 +340,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 			} else {
 				ui.Row(c).FillWidth().Padding(10, 14).Margin(0, 0, 14, 0).Radius(10).Background(p.Surface).Border(1, p.LineSoft).Children(func() {
 					ui.Text(c, "正在查看历史日期：支持勾选完成、修改标题与步骤；新增任务与排序请在「今天」进行。").
-						FontSize(12.5).TextColor(p.Ink3)
+						FontSize(13).TextColor(p.Ink3)
 				})
 			}
 
@@ -415,7 +415,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 							detail = "切换日期或点击「回今天」"
 						}
 						ui.Text(c, title).FontSize(18).FontWeight(700).TextColor(p.Navy)
-						ui.Text(c, detail).FontSize(12.5).TextColor(p.Ink3)
+						ui.Text(c, detail).FontSize(13).TextColor(p.Ink3)
 					})
 					return
 				}
@@ -428,7 +428,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 					ui.Row(c).FillWidth().Padding(14, 16).Margin(2, 0, 8, 0).Radius(12).
 						Background(p.Surface).Border(1, p.LineSoft).Gap(8).AlignItems(ui.Center).Children(func() {
 						ui.Icon(c, IconCheck).Size(15, 15).TextColor(p.Success)
-						ui.Text(c, "已完成今日全部待办").FontSize(13.5).FontWeight(600).TextColor(p.Navy)
+						ui.Text(c, "已完成今日全部待办").FontSize(14).FontWeight(600).TextColor(p.Navy)
 					})
 				}
 
@@ -446,7 +446,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 					hdr.Children(func() {
 						ui.Row(c).Fill().Gap(7).AlignItems(ui.Center).Children(func() {
 							ui.Icon(c, toggleIcon).Size(12, 12).TextColor(p.Ink3)
-							ui.Text(c, "已完成").FontSize(12.5).FontWeight(700).TextColor(p.Ink3).SingleLine()
+							ui.Text(c, "已完成").FontSize(13).FontWeight(700).TextColor(p.Ink3).SingleLine()
 							badgeChip(c, fmt.Sprintf("%d", len(doneTasks)), p.Surface, p.Ink3, p.LineSoft)
 							ui.Box(c).Grow(1).Height(1).Background(p.LineSoft)
 						})
@@ -471,7 +471,7 @@ func (a *App) renderBindPicker(c *ui.Context, openTasks []store.Task, p Palette)
 	ui.Column(c.Key("bind-picker")).FillWidth().Padding(12, 16).Margin(0, 0, 14, 0).Radius(13).
 		Background(p.AccentSoft).Border(1, p.AccentVeil).Transition(calCardMotion).Gap(9).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, "这一轮专注做哪件事？").FontSize(13.5).FontWeight(700).TextColor(p.Navy).Grow(1).SingleLine()
+			ui.Text(c, "这一轮专注做哪件事？").FontSize(14).FontWeight(700).TextColor(p.Navy).Grow(1).SingleLine()
 			skip := ui.ButtonBase(c).Height(28).Padding(0, 11).Radius(8).Background(p.Paper).Border(1, p.Line).
 				Transition(colorFadeFast).Cursor(ui.CursorPointer).Label("不绑定任务直接开始")
 			if skip.Hovered() {
@@ -499,7 +499,7 @@ func (a *App) renderBindPicker(c *ui.Context, openTasks []store.Task, p Palette)
 					pill.Border(1, p.Blue)
 				}
 				pill.Children(func() {
-					ui.Text(c, tk.Title).FontSize(12.5).FontWeight(600).TextColor(p.Ink).MaxWidth(220).SingleLine()
+					ui.Text(c, tk.Title).FontSize(13).FontWeight(600).TextColor(p.Ink).MaxWidth(220).SingleLine()
 				})
 				if pill.Clicked() {
 					a.bindPickOpen = false
@@ -636,7 +636,7 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 			if a.editingTaskID == task.ID {
 				ed := ui.TextInput(c.Key("edit-task-"+task.ID), &a.editingTaskVal).FontSize(16).AutoFocus().Grow(1).Label("修改任务标题")
 				saveEd := primaryBtn(c, "保存", 12.5, p).Padding(5, 12)
-				cancelEd := ui.Button(c, "取消").Padding(5, 12).FontSize(12.5)
+				cancelEd := ui.Button(c, "取消").Padding(5, 12).FontSize(13)
 				if ed.Submitted() || saveEd.Clicked() {
 					a.Todo.SetTaskTitle(task.ID, a.editingTaskVal)
 					a.editingTaskID = ""
@@ -644,7 +644,7 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 					a.editingTaskID = ""
 				}
 			} else {
-				titleEl := ui.Text(c, task.Title).FontSize(16.5).FontWeight(600).Grow(1).SingleLine()
+				titleEl := ui.Text(c, task.Title).FontSize(16).FontWeight(600).Grow(1).SingleLine()
 				if task.Done {
 					titleEl.FontWeight(500).TextColor(p.Ink3).Strikethrough()
 				} else if isCurrentFocus {
@@ -856,7 +856,7 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 
 				if a.subAddTaskID == task.ID {
 					ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-						sin := ui.TextInput(c.Key("sub-add-"+task.ID), &a.subAddDraft).FontSize(13.5).Placeholder("输入小步骤，回车添加").AutoFocus().Grow(1).Label("新小步骤")
+						sin := ui.TextInput(c.Key("sub-add-"+task.ID), &a.subAddDraft).FontSize(14).Placeholder("输入小步骤，回车添加").AutoFocus().Grow(1).Label("新小步骤")
 						addB := primaryBtn(c, "添加", 12, p).Padding(4, 12)
 						canB := ui.Button(c, "取消").Padding(4, 12).FontSize(12)
 						if sin.Submitted() || addB.Clicked() {
@@ -908,7 +908,7 @@ func (a *App) renderCalendarOverlay(c *ui.Context, p Palette) {
 	ui.Column(c).FillWidth().MaxWidth(780).Grow(1).MinHeight(0).Padding(PagePadTop, PagePadX, 18, PagePadX).Gap(14).Children(func() {
 		ui.Row(c).FillWidth().Height(40).AlignItems(ui.Center).Gap(10).Children(func() {
 			plainTitle(c, "日历", p)
-			ui.Text(c, "点选某一天，查看或安排那天的事").FontSize(12.5).TextColor(p.Ink4).Padding(6, 0, 0, 2)
+			ui.Text(c, "点选某一天，查看或安排那天的事").FontSize(13).TextColor(p.Ink4).Padding(6, 0, 0, 2)
 		})
 		cardLook(ui.Column(c.Key("cal-card")).FillWidth(), p).
 			Transition(calCardMotion).Clip().Children(func() {
@@ -975,35 +975,33 @@ func (a *App) renderCalendarOverlay(c *ui.Context, p Palette) {
 
 						cell := ui.ButtonBase(c.Key("cal-"+dk)).Height(52).Radius(12).Center().
 							Transition(colorFadeFast).Cursor(ui.CursorPointer).Label(dk)
+						// Today is a soft blue wash; the selected day is an outline. Neither is a heavy block.
 						if isTodayCell {
-							cell.Background(p.BlueDeep).Shadow(0, 4, 12, 0, p.BtnGlow)
-						} else if isSel {
-							cell.Background(p.AccentSoft).Border(2, p.BlueDeep)
+							cell.Background(p.AccentSoft)
+						} else if cell.Hovered() {
+							cell.Background(p.Surface)
+						}
+						if isSel {
+							cell.Border(1.5, p.Blue)
 						} else if cell.Hovered() {
 							cell.Background(p.AccentSoft).Border(1, p.AccentVeil)
 						}
 						cell.Children(func() {
 							ui.Column(c).Center().Gap(2).Children(func() {
-								tc := p.Ink2
+								tc, tw := p.Ink2, 600
 								if isTodayCell {
-									tc = ui.Hex("#FFFFFF")
+									tc, tw = p.BlueDeep, 800
 								} else if isSel {
 									tc = p.BlueDeep
 								}
-								ui.Textf(c, "%d", dayNum).Font(FontNum).FontSize(15.5).FontWeight(600).TextColor(tc)
+								ui.Textf(c, "%d", dayNum).Font(FontNum).FontSize(16).FontWeight(tw).TextColor(tc)
 								if fMin > 0 {
 									mc := p.BlueDeep
-									if isTodayCell {
-										mc = ui.Hex("#FFFFFF").Alpha(0.90)
-									}
-									ui.Textf(c, "%dm", fMin).Font(FontMono).FontSize(9.5).FontWeight(600).TextColor(mc).SingleLine()
+									ui.Textf(c, "%dm", fMin).Font(FontMono).FontSize(11).FontWeight(600).TextColor(mc).SingleLine()
 								} else if hasTasks {
 									dc := p.Blue
 									if allDone {
 										dc = p.Success
-									}
-									if isTodayCell {
-										dc = ui.Hex("#FFFFFF")
 									}
 									ui.Box(c).Size(5, 5).Radius(999).Background(dc)
 								} else {
