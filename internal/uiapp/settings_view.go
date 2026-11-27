@@ -70,6 +70,34 @@ func (a *App) renderSettingsPanel(c *ui.Context, snap timer.Snapshot, p Palette)
 
 			ui.Divider(c)
 
+			// Focus clock & reminders: the same preferences as the Focus Clock's quick overlay
+			ui.Column(c).FillWidth().Gap(10).Children(func() {
+				ui.Text(c, "专注与提醒").FontSize(16).FontWeight(700).TextColor(p.Navy)
+				ui.Text(c, "提示音、系统通知、动画与托盘行为；专注钟右上角的快捷设置与这里同步。").FontSize(13).TextColor(p.Ink3)
+				a.renderTimerPrefRows(c, snap, p, 14, false)
+			})
+
+			ui.Divider(c)
+
+			// Keyboard shortcuts reference
+			ui.Column(c).FillWidth().Gap(8).Children(func() {
+				ui.Text(c, "快捷键").FontSize(16).FontWeight(700).TextColor(p.Navy)
+				for _, sc := range [][2]string{
+					{"空格", "开始 / 暂停 / 继续专注"},
+					{"Ctrl+N", "回到今日事并新建任务"},
+					{"Ctrl+1 … Ctrl+5", "切换 今日事 / 专注钟 / 日历 / 统计 / 设置"},
+					{"Esc", "关闭当前浮层或取消编辑"},
+					{"右键任务", "开始专注、加步骤、设闹钟、改标题、删除"},
+				} {
+					ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, sc[0]).Font(FontMono).FontSize(12.5).FontWeight(600).TextColor(p.BlueDeep).Width(150).SingleLine()
+						ui.Text(c, sc[1]).FontSize(13).TextColor(p.Ink2).Grow(1)
+					})
+				}
+			})
+
+			ui.Divider(c)
+
 			// 2) Daily tasks config
 			ui.Column(c).FillWidth().Gap(8).Children(func() {
 				ui.Text(c, "每日任务").FontSize(16).FontWeight(700).TextColor(p.Navy)

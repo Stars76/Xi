@@ -134,6 +134,7 @@ func (a *App) MainView(c *ui.Context) {
 	}
 
 	snap := a.Timer.Snapshot()
+	a.handleGlobalShortcuts(c, snap)
 	bar := c.TitleBar()
 	leftPad := float32(14)
 	if runtime.GOOS == "darwin" && bar.Left > 0 {
@@ -161,6 +162,7 @@ func (a *App) MainView(c *ui.Context) {
 				sbBtn := iconBtn(c, IconSidebar, "切换侧栏", "展开 / 收起导航侧栏", p).Size(28, 28)
 				if sbBtn.Clicked() {
 					a.sidebarCollapsed = !a.sidebarCollapsed
+					a.saveTodoViewPrefs()
 				}
 				if logo := logoSource(); logo != nil {
 					ui.Image(c, logo).Size(20, 20).Radius(5)
@@ -184,6 +186,7 @@ func (a *App) MainView(c *ui.Context) {
 					if a.tlDrawerOpen {
 						a.markStatsDirty()
 					}
+					a.saveTodoViewPrefs()
 				}
 				a.renderShellTimerChip(c, snap, p)
 			})
@@ -288,6 +291,40 @@ func (a *App) MainView(c *ui.Context) {
 	}
 }
 
+// navPages lists the main-window pages in sidebar order; Ctrl+1..5 follow the same order.
+var navPages = []struct {
+	ID    string
+	Label string
+	Icon  *ui.SVG
+}{
+	{"", "今日事", IconList},
+	{"focus", "专注钟", IconTimer},
+	{"calendar", "日历", IconCalendar},
+	{"stats", "统计", IconChart},
+	{"settings", "设置与备份", IconSettings},
+}
+
+// handleGlobalShortcuts wires the keyboard-first paths: Ctrl+1..5 pages, Ctrl+N new task,
+// Space start / pause. Text inputs and focused buttons consume their own keys first.
+func (a *App) handleGlobalShortcuts(c *ui.Context, snap timer.Snapshot) {
+	if a.overlayOpen() {
+		return
+	}
+	for i, pg := range navPages {
+		if c.Shortcut(ui.Ctrl, ui.Key1+ui.Key(i)) {
+			a.navigate(pg.ID)
+		}
+	}
+	if c.Shortcut(ui.Ctrl, ui.KeyN) {
+		a.navigate("")
+		a.Todo.GoToday()
+		a.focusNewTask = true
+	}
+	if c.Shortcut(0, ui.KeySpace) && !c.ShortcutRepeated() {
+		a.primaryTimerAction(snap, a.activeOverlay == "")
+	}
+}
+
 func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
 	_, doneCount, totalCount := a.todayTideLevel(snap)
 	openCount := totalCount - doneCount
@@ -297,10 +334,10 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
 		BorderWidth(0, 1, 0, 0).BorderColor(p.Line).
 		Padding(14, 10, 12, 10).Gap(5).Children(func() {
 
-			navItem := func(id, label string, icon *ui.SVG, badge string, badgeLive bool, onClick func()) {
+			navItem := func(id, label string, icon *ui.SVG, badge string, badgeLive bool, hint string) {
 				active := a.activeOverlay == id
 				item := ui.ButtonBase(c.Key("nav-"+id)).FillWidth().Height(38).Radius(10).
-					Padding(0, 11).Transition(cardFadeFast).Cursor(ui.CursorPointer).Label(label)
+					Padding(0, 11).Transition(cardFadeFast).Cursor(ui.CursorPointer).Label(label).Tooltip(hint)
 				hov := item.Hovered()
 				if active {
 					item.Background(p.Paper).Border(1, p.Line).Shadow(0, 2, 8, 0, p.CardShadow)
@@ -331,7 +368,7 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
 					})
 				})
 				if item.Clicked() {
-					onClick()
+					a.navigate(id)
 				}
 			}
 
@@ -344,29 +381,16 @@ func (a *App) renderSidebar(c *ui.Context, snap timer.Snapshot, p Palette) {
 				focusBadge = dateutil.FmtClock(snap.Timer.LeftSec)
 			}
 
-			navItem("", "今日事", IconList, openBadge, false, func() {
-				a.activeOverlay = ""
-			})
-			navItem("focus", "专注钟", IconTimer, focusBadge, snap.Timer.Running, func() {
-				a.activeOverlay = "focus"
-			})
-			navItem("calendar", "日历", IconCalendar, "", false, func() {
-				a.activeOverlay = "calendar"
-			})
-			navItem("stats", "统计", IconChart, "", false, func() {
-				a.tlDayKey = a.Todo.TodayKey()
-				a.tlScrolledDay = ""
-				a.statsShowAllRecs = false
-				a.markStatsDirty()
-				a.activeOverlay = "stats"
-			})
-			navItem("settings", "设置与备份", IconSettings, "", false, func() {
-				a.loadTemplateDrafts()
-				a.mu.Lock()
-				a.recoveryDirty = true
-				a.mu.Unlock()
-				a.activeOverlay = "settings"
-			})
+			for i, pg := range navPages {
+				badge, live := "", false
+				switch pg.ID {
+				case "":
+					badge = openBadge
+				case "focus":
+					badge, live = focusBadge, snap.Timer.Running
+				}
+				navItem(pg.ID, pg.Label, pg.Icon, badge, live, fmt.Sprintf("Ctrl+%d", i+1))
+			}
 
 			ui.Spacer(c)
 
@@ -437,6 +461,7 @@ func (a *App) renderRightTimelineDrawer(c *ui.Context, p Palette) {
 			cls := iconBtn(c, IconClose, "收起时间轴", "收起", p).Size(28, 28)
 			if cls.Clicked() {
 				a.tlDrawerOpen = false
+				a.saveTodoViewPrefs()
 			}
 		})
 

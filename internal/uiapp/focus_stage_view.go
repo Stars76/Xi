@@ -247,7 +247,7 @@ func (a *App) renderFocusStage(c *ui.Context, snap timer.Snapshot, p Palette) {
 						a.timerShowSet = false
 					}
 
-					mainBtn := sheenPrimaryBtn(c, primaryLabel, 40, p).Padding(0, 24).Radius(11)
+					mainBtn := sheenPrimaryBtn(c, primaryLabel, 40, p).Padding(0, 24).Radius(11).Tooltip("空格")
 					if mainBtn.Clicked() {
 						a.timerShowSetup = false
 						a.timerShowSet = false
@@ -374,17 +374,21 @@ func (a *App) renderStageBoundTaskCard(c *ui.Context, taskDay string, task store
 
 func (a *App) renderStageQuickBindStrip(c *ui.Context, p Palette) {
 	today := a.Todo.TodayKey()
-	openTasks := make([]store.Task, 0, 3)
+	var openTasks []store.Task
 	for _, tk := range a.Todo.TasksForDay(today) {
 		if !tk.Done {
 			openTasks = append(openTasks, tk)
-			if len(openTasks) >= 3 {
-				break
-			}
 		}
 	}
 	if len(openTasks) == 0 {
 		return
+	}
+	// Three tasks keep the strip to one line; the rest are one click away instead of unreachable.
+	const collapsedCount = 3
+	hidden := 0
+	if !a.stageBindAll && len(openTasks) > collapsedCount {
+		hidden = len(openTasks) - collapsedCount
+		openTasks = openTasks[:collapsedCount]
 	}
 	ui.Row(c).FillWidth().MaxWidth(620).Padding(10, 14).Radius(13).
 		Background(p.Paper.Alpha(0.90)).Border(1, p.Line).Shadow(0, 6, 18, 0, p.CardShadow).
@@ -402,7 +406,26 @@ func (a *App) renderStageQuickBindStrip(c *ui.Context, p Palette) {
 				ui.Text(c, tk.Title).FontSize(12).FontWeight(600).TextColor(p.Ink).MaxWidth(150).SingleLine()
 			})
 			if pill.Clicked() {
+				a.stageBindAll = false
 				a.Timer.StartTask(tCopy.ID, a.Todo.TodayKey(), false)
+			}
+		}
+		if hidden > 0 || a.stageBindAll {
+			moreText := fmt.Sprintf("其余 %d 项", hidden)
+			if a.stageBindAll {
+				moreText = "收起"
+			}
+			more := ui.ButtonBase(c.Key("qbind-more")).Height(28).Padding(0, 11).Radius(999).
+				Background(p.AccentSoft).Border(1, p.AccentVeil).Transition(colorFadeFast).
+				Cursor(ui.CursorPointer).Label("展开全部今日任务")
+			if more.Hovered() {
+				more.Border(1, p.Blue)
+			}
+			more.Children(func() {
+				ui.Text(c, moreText).FontSize(12).FontWeight(700).TextColor(p.BlueDeep).SingleLine()
+			})
+			if more.Clicked() {
+				a.stageBindAll = !a.stageBindAll
 			}
 		}
 	})

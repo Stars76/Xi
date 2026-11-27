@@ -220,16 +220,10 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 								ppLbl = "继续专注"
 							}
 							ppBtn := sheenPrimaryBtn(c, ppLbl, 32, p).Padding(0, 14).Radius(9)
+							ppBtn.Tooltip("空格")
 							if ppBtn.Clicked() {
-								switch {
-								case t.Running:
-									a.Timer.Command("pause")
-								case t.Idle && t.Phase == "focus" && t.Task == nil && len(openTasks) > 0:
-									// Ask which task this round is for, so history is not filled with unbound records.
-									a.bindPickOpen = !a.bindPickOpen
-								default:
-									a.Timer.Command("start")
-								}
+								// Asks which task the round is for when nothing is bound, so history is not filled with unbound records.
+								a.primaryTimerAction(snap, true)
 							}
 
 							stageBtn := ui.ButtonBase(c).Height(32).Padding(0, 11).Radius(9).
@@ -331,7 +325,11 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 				ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Margin(0, 0, 16, 0).Children(func() {
 					in := ui.TextInput(c.Key("add-task-input"), &a.newTaskDraft).
 						Height(44).FontSize(15).Padding(10, 14).Radius(11).
-						Background(p.Surface2).Placeholder(placeholder).Label("新任务").Grow(1)
+						Background(p.Surface2).Placeholder(placeholder).Label("新任务").Grow(1).Tooltip("Ctrl+N")
+					if a.focusNewTask {
+						a.focusNewTask = false
+						in.Focus()
+					}
 					addBtn := sheenPrimaryBtn(c, "添加", 44, p)
 					if in.Submitted() || addBtn.Clicked() {
 						if a.addTaskSmart(c, a.newTaskDraft) {
@@ -378,6 +376,20 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 				if fBtn.Clicked() {
 					a.onlyOpen = !a.onlyOpen
 					a.saveTodoViewPrefs()
+				}
+				if !isFuture && totalCount > 0 {
+					rvBtn := ui.ButtonBase(c).Padding(4, 10).Radius(7).Cursor(ui.CursorPointer).
+						Background(p.Paper).Border(1, p.Line).Transition(colorFadeFast).
+						Label("复制当日复盘").Tooltip("复制这一天的 Markdown 复盘到剪贴板")
+					if rvBtn.Hovered() {
+						rvBtn.Border(1, p.Blue)
+					}
+					rvBtn.Children(func() {
+						ui.Text(c, "复制复盘").FontSize(12).FontWeight(600).TextColor(p.Ink3).SingleLine()
+					})
+					if rvBtn.Clicked() {
+						a.copyDailyReview(c, viewDay)
+					}
 				}
 			})
 
@@ -441,6 +453,7 @@ func (a *App) renderTodoWorkspace(c *ui.Context, snap timer.Snapshot, p Palette)
 					})
 					if hdr.Clicked() {
 						a.doneGroupOpen = !a.doneGroupOpen
+						a.saveTodoViewPrefs()
 					}
 					if a.doneGroupOpen {
 						for idx, task := range doneTasks {
@@ -536,6 +549,65 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 	}
 
 	showActs := hovered || isCurrentFocus || a.alarmTaskID == task.ID || a.subAddTaskID == task.ID || a.editingTaskID == task.ID
+	canFocus := isToday && !task.Done
+
+	toggleSubAdd := func() {
+		if a.subAddTaskID == task.ID {
+			a.subAddTaskID = ""
+		} else {
+			a.subAddTaskID = task.ID
+			a.subAddDraft = ""
+			delete(a.collapsed, task.ID)
+		}
+	}
+	toggleAlarm := func() {
+		if a.alarmTaskID == task.ID {
+			a.alarmTaskID = ""
+		} else {
+			a.alarmTaskID = task.ID
+			a.alarmInputStr = task.Alarm
+		}
+	}
+	startEdit := func() {
+		a.editingTaskID = task.ID
+		a.editingTaskVal = task.Title
+	}
+	deleteTask := func() {
+		removed, rIdx, ok := a.Todo.DeleteTask(task.ID)
+		if !ok {
+			return
+		}
+		a.lastUndoTask = &removed
+		a.lastUndoIndex = rIdx
+		a.markStatsDirty()
+		c.ToastAction("已删除任务", "撤销", func() {
+			if a.lastUndoTask != nil {
+				a.Todo.RestoreTask(*a.lastUndoTask, a.lastUndoIndex)
+				a.lastUndoTask = nil
+				a.markStatsDirty()
+			}
+		})
+	}
+
+	// Right-click mirrors the hover action bar so every action is discoverable without hovering.
+	row.PopoverMenu(func(m *ui.Menu) {
+		if canFocus && m.Item("开始专注").Chosen() {
+			a.StartTaskFocus(c, task)
+		}
+		if m.Item("添加小步骤").Chosen() {
+			toggleSubAdd()
+		}
+		if m.Item("设置闹钟").Chosen() {
+			toggleAlarm()
+		}
+		if m.Item("修改标题").Chosen() {
+			startEdit()
+		}
+		m.Separator()
+		if m.Item("删除任务").Chosen() {
+			deleteTask()
+		}
+	})
 
 	row.Children(func() {
 		// Main task head row
@@ -649,28 +721,23 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 							})
 						})
 						if alBadge.Clicked() {
-							if a.alarmTaskID == task.ID {
-								a.alarmTaskID = ""
-							} else {
-								a.alarmTaskID = task.ID
-								a.alarmInputStr = task.Alarm
-							}
+							toggleAlarm()
 						}
 					}
 				})
 			}
 
-			// Hover-revealed action bar + drag handle
-			if showActs && a.editingTaskID != task.ID {
+			// Start-focus stays visible on every open task today; the rest of the bar is revealed on hover
+			if (showActs || canFocus) && a.editingTaskID != task.ID {
 				ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-					if canSort {
+					if showActs && canSort {
 						grip := ui.Box(c.Key("drag-"+task.ID)).Size(24, 28).Radius(6).Center().
 							Cursor(ui.CursorGrab).Tooltip("拖动排序").Drag(task.ID)
 						grip.Children(func() {
 							ui.Icon(c, IconMove).Size(14, 14).TextColor(p.Ink4)
 						})
 					}
-					if isToday && !task.Done {
+					if canFocus {
 						tip := "开始专注"
 						if isCurrentFocus {
 							tip = "回到本轮专注钟"
@@ -683,45 +750,24 @@ func (a *App) renderTaskCard(c *ui.Context, idx int, task store.Task, isToday bo
 							a.StartTaskFocus(c, task)
 						}
 					}
+					if !showActs {
+						return
+					}
 					subBtn := iconBtn(c, IconAdd, "加步骤 "+task.Title, "添加小步骤", p).Size(28, 28)
 					if subBtn.Clicked() {
-						if a.subAddTaskID == task.ID {
-							a.subAddTaskID = ""
-						} else {
-							a.subAddTaskID = task.ID
-							a.subAddDraft = ""
-							delete(a.collapsed, task.ID)
-						}
+						toggleSubAdd()
 					}
 					alBtn := iconBtn(c, IconAlarm, "闹钟 "+task.Title, "设置闹钟", p).Size(28, 28)
 					if alBtn.Clicked() {
-						if a.alarmTaskID == task.ID {
-							a.alarmTaskID = ""
-						} else {
-							a.alarmTaskID = task.ID
-							a.alarmInputStr = task.Alarm
-						}
+						toggleAlarm()
 					}
 					edBtn := iconBtn(c, IconEdit, "修改 "+task.Title, "修改标题", p).Size(28, 28)
 					if edBtn.Clicked() {
-						a.editingTaskID = task.ID
-						a.editingTaskVal = task.Title
+						startEdit()
 					}
 					delBtn := iconBtn(c, IconDelete, "删除 "+task.Title, "删除任务", p).Size(28, 28)
 					if delBtn.Clicked() {
-						removed, rIdx, ok := a.Todo.DeleteTask(task.ID)
-						if ok {
-							a.lastUndoTask = &removed
-							a.lastUndoIndex = rIdx
-							a.markStatsDirty()
-							c.ToastAction("已删除任务", "撤销", func() {
-								if a.lastUndoTask != nil {
-									a.Todo.RestoreTask(*a.lastUndoTask, a.lastUndoIndex)
-									a.lastUndoTask = nil
-									a.markStatsDirty()
-								}
-							})
-						}
+						deleteTask()
 					}
 				})
 			}

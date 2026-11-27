@@ -75,6 +75,8 @@ type App struct {
 	todoScroll     ui.ScrollState
 	lastUndoTask   *store.Task
 	lastUndoIndex  int
+	focusNewTask   bool      // Ctrl+N: focus the new-task input on the next frame
+	stageBindAll   bool      // Focus Clock: quick-bind strip expanded to every open task
 	bindPickOpen   bool      // Today page: "which task is this round for?" picker
 	resetArmedAt   time.Time // first click on 重置 during an active round arms a confirm step
 
@@ -203,6 +205,9 @@ func NewApp(cfg AppConfig) *App {
 	a.Todo.Init()
 	vp := a.Todo.ViewPrefs()
 	a.onlyOpen = vp.OnlyOpen
+	a.sidebarCollapsed = vp.SidebarCollapsed
+	a.tlDrawerOpen = vp.TimelineOpen
+	a.doneGroupOpen = vp.DoneGroupOpen
 	for _, id := range vp.Collapsed {
 		a.collapsed[id] = true
 	}
@@ -518,7 +523,13 @@ func (a *App) saveTodoViewPrefs() {
 			col = append(col, k)
 		}
 	}
-	a.Todo.SaveViewPrefs(store.TodoViewPrefs{OnlyOpen: a.onlyOpen, Collapsed: col})
+	a.Todo.SaveViewPrefs(store.TodoViewPrefs{
+		OnlyOpen:         a.onlyOpen,
+		Collapsed:        col,
+		SidebarCollapsed: a.sidebarCollapsed,
+		TimelineOpen:     a.tlDrawerOpen,
+		DoneGroupOpen:    a.doneGroupOpen,
+	})
 }
 
 func (a *App) SendNotification(title, body string) {
@@ -1007,6 +1018,66 @@ func (a *App) StartDesktop(compactOnly bool, startHidden bool) {
 }
 
 // StartTaskFocus binds a task to the focus timer and enters the unified in-window Focus Stage.
+// navigate switches the main-window page ("" = Today) and refreshes the caches that page reads.
+func (a *App) navigate(id string) {
+	switch id {
+	case "stats":
+		a.tlDayKey = a.Todo.TodayKey()
+		a.tlScrolledDay = ""
+		a.statsShowAllRecs = false
+		a.markStatsDirty()
+	case "settings":
+		a.loadTemplateDrafts()
+		a.mu.Lock()
+		a.recoveryDirty = true
+		a.mu.Unlock()
+	}
+	a.bindPickOpen = false
+	a.activeOverlay = id
+}
+
+// overlayOpen reports whether an in-page overlay or inline editor currently owns the keyboard,
+// in which case global shortcuts stay out of the way.
+func (a *App) overlayOpen() bool {
+	return a.importOpen || a.clearAskOpen || a.sceneModalOpen || a.timerShowSet || a.timerShowSetup ||
+		a.timerDoneVisible || a.tlFormOpen || a.editingTaskID != "" || a.editingSubKey != "" ||
+		a.subAddTaskID != "" || a.alarmTaskID != "" || a.editingDid != ""
+}
+
+// primaryTimerAction is the start / pause / resume toggle shared by buttons and the Space shortcut.
+// From Today, an idle unbound start first asks which task the round is for.
+func (a *App) primaryTimerAction(snap timer.Snapshot, askTask bool) {
+	t := snap.Timer
+	switch {
+	case t.Running:
+		a.Timer.Command("pause")
+	case askTask && t.Idle && t.Phase == "focus" && t.Task == nil && a.hasOpenTaskToday():
+		a.bindPickOpen = !a.bindPickOpen
+	default:
+		a.Timer.Command("start")
+	}
+}
+
+func (a *App) hasOpenTaskToday() bool {
+	for _, tk := range a.Todo.TasksForDay(a.Todo.TodayKey()) {
+		if !tk.Done {
+			return true
+		}
+	}
+	return false
+}
+
+// copyDailyReview copies the Markdown daily review of day to the clipboard.
+func (a *App) copyDailyReview(c *ui.Context, day string) {
+	res := notes.BuildNote(a.Store, notes.BuildRequest{Kind: "daily", Day: day}, a.now())
+	if !res.OK {
+		c.Toast("生成复盘失败")
+		return
+	}
+	c.WriteClipboard(res.Text)
+	c.Toast("已复制「" + res.Name + "」到剪贴板")
+}
+
 const resetConfirmWindow = 4 * time.Second
 
 // resetArmed reports whether the reset button is currently waiting for its confirming second click.

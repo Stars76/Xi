@@ -625,3 +625,108 @@ func TestP0FlowFixes(t *testing.T) {
 		t.Fatalf("expected to land on Focus Clock, overlay=%q", a.activeOverlay)
 	}
 }
+
+func TestP1KeyboardMenuAndPersistedLayout(t *testing.T) {
+	a := newUITestApp(t)
+	tt := ui.NewTester(a.MainView, 1060, 780)
+
+	// Ctrl+1..5 switch pages in sidebar order.
+	for i, want := range []string{"", "focus", "calendar", "stats", "settings"} {
+		tt.Key(ui.Ctrl, ui.Key1+ui.Key(i))
+		if a.activeOverlay != want {
+			t.Fatalf("Ctrl+%d: expected page %q, got %q", i+1, want, a.activeOverlay)
+		}
+	}
+	// The Settings page now carries the focus-clock preferences and the shortcut reference.
+	if !tt.HasText("专注与提醒") || !tt.HasText("提示音") || !tt.HasText("快捷键") {
+		t.Fatalf("expected timer prefs + shortcuts on settings page, texts=%v", tt.Texts())
+	}
+
+	// Ctrl+N returns to Today with the new-task input focused: typing goes straight into it.
+	tt.Key(ui.Ctrl, ui.KeyN)
+	if a.activeOverlay != "" {
+		t.Fatalf("Ctrl+N should land on Today, got %q", a.activeOverlay)
+	}
+	tt.Type("键盘 建的 任务")
+	tt.Key(0, ui.KeySpace) // Space inside a text input must not start the timer
+	if a.Timer.Snapshot().Timer.Running || a.bindPickOpen {
+		t.Fatal("Space typed into a text input must not trigger the timer shortcut")
+	}
+	tt.Key(0, ui.KeyEnter)
+	tasks := a.Todo.Tasks()
+	if len(tasks) != 1 || tasks[0].Title != "键盘 建的 任务" {
+		t.Fatalf("expected task created from keyboard, got %+v", tasks)
+	}
+
+	// Right-click menu exposes the row actions without hovering.
+	if err := tt.RightClick("键盘 建的 任务"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("添加小步骤") || !tt.HasText("删除任务") {
+		t.Fatalf("expected task context menu, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("修改标题"); err != nil {
+		t.Fatal(err)
+	}
+	if a.editingTaskID != tasks[0].ID {
+		t.Fatal("expected context menu 修改标题 to start inline edit")
+	}
+	tt.Key(0, ui.KeyEscape)
+
+	// Layout toggles persist across restarts.
+	if err := tt.Click("切换侧栏"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("切换今日时间轴侧栏"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Store.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	b := NewApp(AppConfig{UserDataDir: a.Store.Dir(), Now: a.nowFn})
+	if !b.sidebarCollapsed || !b.tlDrawerOpen {
+		t.Fatalf("expected layout restored, sidebarCollapsed=%v tlDrawerOpen=%v", b.sidebarCollapsed, b.tlDrawerOpen)
+	}
+}
+
+func TestP1SpaceShortcutAndFullBindStrip(t *testing.T) {
+	a := newUITestApp(t)
+	tt := ui.NewTester(a.MainView, 1060, 780)
+	for _, title := range []string{"任务一", "任务二", "任务三", "任务四", "任务五"} {
+		a.Todo.AddTask(title)
+	}
+	tt.Frame()
+
+	// Space on Today with nothing bound opens the task picker instead of an unbound start.
+	tt.Key(0, ui.KeySpace)
+	if a.Timer.Snapshot().Timer.Running || !a.bindPickOpen {
+		t.Fatal("expected Space on Today to open the bind picker")
+	}
+	tt.Key(0, ui.KeyEscape)
+
+	// On the Focus Clock, the quick-bind strip can reach every open task, not just the first three.
+	tt.Key(ui.Ctrl, ui.Key2)
+	if tt.HasText("任务一") { // newest first: 任务五/四/三 are shown, 任务一 is hidden
+		t.Fatalf("expected strip collapsed to three tasks, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("展开全部今日任务"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("绑定 任务一"); err != nil {
+		t.Fatal(err)
+	}
+	snap := a.Timer.Snapshot()
+	if !snap.Timer.Running || snap.Timer.Task == nil || snap.Timer.Task.Title != "任务一" {
+		t.Fatalf("expected round bound to the previously unreachable task, got %+v", snap.Timer)
+	}
+
+	// Space toggles pause / resume while a round is active.
+	tt.Key(0, ui.KeySpace)
+	if a.Timer.Snapshot().Timer.Running {
+		t.Fatal("expected Space to pause the running round")
+	}
+	tt.Key(0, ui.KeySpace)
+	if !a.Timer.Snapshot().Timer.Running {
+		t.Fatal("expected Space to resume the paused round")
+	}
+}

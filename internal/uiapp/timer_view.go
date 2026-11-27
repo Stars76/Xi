@@ -545,7 +545,6 @@ func (a *App) renderTimerSetupOverlay(c *ui.Context, snap timer.Snapshot, p Pale
 }
 
 func (a *App) renderTimerSettingsOverlay(c *ui.Context, snap timer.Snapshot, p Palette, inStage bool) {
-	prefs := snap.Prefs
 	renderBody := func(card ui.Element) {
 		card.Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
@@ -558,59 +557,7 @@ func (a *App) renderTimerSettingsOverlay(c *ui.Context, snap timer.Snapshot, p P
 			})
 
 			ui.Scroll(c.Key("tset-scroll")).Grow(1).MinHeight(0).Gap(10).Children(func() {
-				boolRow := func(label string, val bool, apply func(bool)) {
-					ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-						ui.Text(c, label).FontSize(12.5).TextColor(p.Ink2).Grow(1)
-						v := val
-						if ui.Switch(c.Key("tsw-"+label), &v).Label(label).Changed() {
-							apply(v)
-						}
-					})
-				}
-				boolRow("提示音", prefs.Sound, func(v bool) { a.Timer.SetPrefs(timer.PrefsPatch{Sound: &v}) })
-				boolRow("系统通知", prefs.Notify, func(v bool) { a.Timer.SetPrefs(timer.PrefsPatch{Notify: &v}) })
-
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
-					ui.Text(c, "动画").FontSize(12.5).TextColor(p.Ink2).Grow(1)
-					mIdx := 0
-					if prefs.Motion == "calm" {
-						mIdx = 1
-					} else if prefs.Motion == "off" {
-						mIdx = 2
-					}
-					if ui.Segmented(c, &mIdx, "流畅", "舒缓", "关闭").Label("动画档位").Changed() {
-						m := []string{"full", "calm", "off"}[mIdx]
-						a.Timer.SetPrefs(timer.PrefsPatch{Motion: &m})
-					}
-				})
-
-				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
-					ui.Text(c, "外观").FontSize(12.5).TextColor(p.Ink2).Grow(1)
-					tIdx := 0
-					if prefs.Theme == "dark" {
-						tIdx = 1
-					} else if prefs.Theme == "system" {
-						tIdx = 2
-					}
-					if ui.Segmented(c, &tIdx, "浅色", "深色", "系统").Label("小窗外观").Changed() {
-						m := []string{"light", "dark", "system"}[tIdx]
-						a.Timer.SetPrefs(timer.PrefsPatch{Theme: &m})
-					}
-				})
-
-				boolRow("高对比度", prefs.HighContrast, func(v bool) { a.Timer.SetPrefs(timer.PrefsPatch{HighContrast: &v}) })
-				boolRow("显示秒", prefs.ShowSeconds, func(v bool) { a.Timer.SetPrefs(timer.PrefsPatch{ShowSeconds: &v}) })
-				boolRow("托盘常驻", prefs.Tray, func(v bool) {
-					a.Timer.SetPrefs(timer.PrefsPatch{Tray: &v})
-					if a.Tray != nil {
-						if v {
-							a.Tray.Create()
-						} else {
-							a.Tray.Destroy()
-						}
-					}
-				})
-				boolRow("关闭主窗时留在托盘", prefs.CloseToTray, func(v bool) { a.Timer.SetPrefs(timer.PrefsPatch{CloseToTray: &v}) })
+				a.renderTimerPrefRows(c, snap, p, 12.5, true)
 			})
 		})
 	}
@@ -633,6 +580,67 @@ func (a *App) renderTimerSettingsOverlay(c *ui.Context, snap timer.Snapshot, p P
 		Padding(14).Radius(12).Background(p.Paper).Border(1, p.Line).
 		Shadow(0, 14, 34, 0, p.ElevatedShadow).Transition(timerOverlayMotion).Gap(8)
 	renderBody(card)
+}
+
+// renderTimerPrefRows renders the focus-clock preference rows. The quick overlay in the Focus Clock
+// and the Settings page share it, so every preference is reachable from the one Settings page.
+func (a *App) renderTimerPrefRows(c *ui.Context, snap timer.Snapshot, p Palette, fs float32, withTheme bool) {
+	prefs := snap.Prefs
+	boolRow := func(label string, val bool, apply func(bool)) {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Text(c, label).FontSize(fs).TextColor(p.Ink2).Grow(1)
+			v := val
+			if ui.Switch(c.Key("tsw-"+label), &v).Label(label).Changed() {
+				apply(v)
+			}
+		})
+	}
+	boolRow("提示音", prefs.Sound, func(v bool) { a.Timer.SetPrefs(timer.PrefsPatch{Sound: &v}) })
+	boolRow("系统通知", prefs.Notify, func(v bool) { a.Timer.SetPrefs(timer.PrefsPatch{Notify: &v}) })
+
+	ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
+		ui.Text(c, "动画").FontSize(fs).TextColor(p.Ink2).Grow(1)
+		mIdx := 0
+		if prefs.Motion == "calm" {
+			mIdx = 1
+		} else if prefs.Motion == "off" {
+			mIdx = 2
+		}
+		if ui.Segmented(c, &mIdx, "流畅", "舒缓", "关闭").Label("动画档位").Changed() {
+			m := []string{"full", "calm", "off"}[mIdx]
+			a.Timer.SetPrefs(timer.PrefsPatch{Motion: &m})
+		}
+	})
+
+	if withTheme {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(6).Children(func() {
+			ui.Text(c, "外观").FontSize(fs).TextColor(p.Ink2).Grow(1)
+			tIdx := 0
+			if prefs.Theme == "dark" {
+				tIdx = 1
+			} else if prefs.Theme == "system" {
+				tIdx = 2
+			}
+			if ui.Segmented(c, &tIdx, "浅色", "深色", "系统").Label("小窗外观").Changed() {
+				m := []string{"light", "dark", "system"}[tIdx]
+				a.Timer.SetPrefs(timer.PrefsPatch{Theme: &m})
+			}
+		})
+	}
+
+	boolRow("高对比度", prefs.HighContrast, func(v bool) { a.Timer.SetPrefs(timer.PrefsPatch{HighContrast: &v}) })
+	boolRow("显示秒", prefs.ShowSeconds, func(v bool) { a.Timer.SetPrefs(timer.PrefsPatch{ShowSeconds: &v}) })
+	boolRow("托盘常驻", prefs.Tray, func(v bool) {
+		a.Timer.SetPrefs(timer.PrefsPatch{Tray: &v})
+		if a.Tray != nil {
+			if v {
+				a.Tray.Create()
+			} else {
+				a.Tray.Destroy()
+			}
+		}
+	})
+	boolRow("关闭主窗时留在托盘", prefs.CloseToTray, func(v bool) { a.Timer.SetPrefs(timer.PrefsPatch{CloseToTray: &v}) })
 }
 
 func (a *App) renderTimerDoneOverlay(c *ui.Context, p Palette) {
