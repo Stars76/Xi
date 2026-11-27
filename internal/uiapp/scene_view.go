@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/store"
-	"github.com/Stars76/526Hz/internal/weather"
+	"github.com/Stars76/Xi/internal/store"
+	"github.com/Stars76/Xi/internal/weather"
 	"github.com/egoist/mygo/ui"
 )
 

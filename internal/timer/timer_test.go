@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/store"
+	"github.com/Stars76/Xi/internal/store"
 )
 
 type fakeClock struct {

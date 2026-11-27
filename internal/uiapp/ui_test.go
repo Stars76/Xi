@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/store"
-	"github.com/Stars76/526Hz/internal/timer"
+	"github.com/Stars76/Xi/internal/store"
+	"github.com/Stars76/Xi/internal/timer"
 	"github.com/egoist/mygo/ui"
 )
 

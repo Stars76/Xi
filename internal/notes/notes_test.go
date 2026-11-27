@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/store"
+	"github.com/Stars76/Xi/internal/store"
 )
 
 func TestRenderAndBuildNote(t *testing.T) {
@@ -45,8 +45,8 @@ func TestRenderAndBuildNote(t *testing.T) {
 	}
 
 	// Unknown variables preserved verbatim
-	custom := Render("hi {{name}} {{unknown_var}}", RenderData{Vars: map[string]string{"name": "526Hz"}})
-	if custom != "hi 526Hz {{unknown_var}}" {
+	custom := Render("hi {{name}} {{unknown_var}}", RenderData{Vars: map[string]string{"name": "Xi"}})
+	if custom != "hi Xi {{unknown_var}}" {
 		t.Fatalf("expected unknown var preserved, got %q", custom)
 	}
 }

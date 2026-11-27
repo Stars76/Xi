@@ -3,9 +3,9 @@ package uiapp
 import (
 	"fmt"
 
-	"github.com/Stars76/526Hz/internal/notes"
-	"github.com/Stars76/526Hz/internal/store"
-	"github.com/Stars76/526Hz/internal/timer"
+	"github.com/Stars76/Xi/internal/notes"
+	"github.com/Stars76/Xi/internal/store"
+	"github.com/Stars76/Xi/internal/timer"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )

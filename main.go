@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Stars76/526Hz/internal/uiapp"
+	"github.com/Stars76/Xi/internal/uiapp"
 	"github.com/egoist/mygo"
 )
 

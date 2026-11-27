@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/assets"
-	"github.com/Stars76/526Hz/internal/dateutil"
-	"github.com/Stars76/526Hz/internal/timer"
+	"github.com/Stars76/Xi/internal/assets"
+	"github.com/Stars76/Xi/internal/dateutil"
+	"github.com/Stars76/Xi/internal/timer"
 	"github.com/egoist/mygo"
 )
 

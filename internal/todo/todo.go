@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/dateutil"
-	"github.com/Stars76/526Hz/internal/store"
+	"github.com/Stars76/Xi/internal/dateutil"
+	"github.com/Stars76/Xi/internal/store"
 )
 
 // Service manages tasks, subtasks, daily templates, and task rollover in sisy-focus-state-v2.

@@ -12,6 +12,8 @@
 [![Go 1.27+](https://img.shields.io/badge/Go-1.27+-00ADD8.svg)](go.mod)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0066D6.svg)](#安装与使用)
 
+汐（xī），夜晚的潮。原名 526Hz，更早叫 Sisyphus；旧版本的数据会被自动沿用。
+
 </div>
 
 ---
@@ -56,7 +58,7 @@
 
 ### 直接下载
 
-前往 [Releases](https://github.com/Stars76/526Hz/releases) 下载 `Xi.exe`，双击即可运行，无需安装额外运行时。带版本号的是正式版；名为"预览版"的是随每次提交自动构建的最新版，可能不稳定。
+前往 [Releases](https://github.com/Stars76/Xi/releases) 下载 `Xi.exe`，双击即可运行，无需安装额外运行时。带版本号的是正式版；名为"预览版"的是随每次提交自动构建的最新版，可能不稳定。
 
 ### 启动参数
 
@@ -98,7 +100,7 @@ go tool mygo build -skip-installer
 ## 目录结构
 
 ```text
-526Hz/
+Xi/
 ├── main.go                     # 单实例锁、CLI 参数、数据目录兼容与启动编排
 ├── mygo.json                   # MyGo 应用元数据（汐 / Xi）
 ├── resources/icon.png          # 应用图标
@@ -113,7 +115,7 @@ go tool mygo build -skip-installer
     ├── notes/                  # Obsidian / Notion Markdown 复盘模板引擎
     ├── sound/                  # 纯 Go 实时立体声环境白噪音与微音效合成
     ├── weather/                # Open-Meteo 实时天气查询客户端（可选开启）
-    └── uiapp/                  # 纯 mygo/ui 原生界面、60fps 波浪物理引擎与托盘
+    └── uiapp/                  # 界面、字符海（海况、天气、昼夜、彩蛋）与托盘；设计规则见 design.go
 ```
 
 ---

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Stars76/526Hz/internal/dateutil"
+	"github.com/Stars76/Xi/internal/dateutil"
 )
 
 // MigrateResult holds the normalized envelope data and migration notes.
