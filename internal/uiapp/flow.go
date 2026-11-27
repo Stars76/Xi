@@ -25,6 +25,9 @@ type SeaState struct {
 	hasLevel    bool
 	wavePhase   float64
 	moodClock   float64 // seconds of animated time; drives the slow drift between sea moods
+	moodCur     seaMood // the mood the water is in right now, eased towards what the weather asks for
+	moodInit    bool
+	frame       seaFrame // the surface as drawn this frame (read by weather, lighting and encounters)
 	lastPaintAt time.Time
 	cachedSize  int
 	glyphs      [][]ui.Glyph
@@ -85,20 +88,35 @@ var seaBodyGlyphs = [3]int{3, 5, 7}
 const seaSurfaceH = 0.42
 
 // seaMood is one character of the same continuous wave: how wide (K), how tall (Amp), how fast (Speed).
-// The sea drifts slowly from one mood to the next so it is never the same wave for long.
 type seaMood struct{ K, Amp, Speed float64 }
 
-var seaMoods = []seaMood{
-	{K: 4.2, Amp: 0.14, Speed: 1.0},  // the familiar swell
-	{K: 3.2, Amp: 0.09, Speed: 0.6},  // calm
-	{K: 2.6, Amp: 0.17, Speed: 0.85}, // long rollers
-	{K: 5.6, Amp: 0.11, Speed: 1.15}, // fine, quicker waves
-}
+// The weather decides how the sea moves. Each weather has a small set of moods the water drifts
+// between, so rain, storm, fog and snow are states of the sea itself and not effects laid over it.
+var (
+	moodFamiliar = seaMood{K: 4.2, Amp: 0.14, Speed: 1.0}   // the everyday swell
+	moodCalm     = seaMood{K: 3.2, Amp: 0.09, Speed: 0.6}   // calm
+	moodRollers  = seaMood{K: 2.6, Amp: 0.17, Speed: 0.85}  // long rollers
+	moodFine     = seaMood{K: 5.6, Amp: 0.11, Speed: 1.15}  // fine, quicker waves
+	moodChop     = seaMood{K: 6.4, Amp: 0.13, Speed: 1.3}   // rain-beaten chop
+	moodStorm    = seaMood{K: 2.4, Amp: 0.22, Speed: 1.4}   // storm rollers
+	moodSurge    = seaMood{K: 3.6, Amp: 0.19, Speed: 1.55}  // storm surge
+	moodStill    = seaMood{K: 3.0, Amp: 0.06, Speed: 0.45}  // near-still water under fog
+	moodHush     = seaMood{K: 3.0, Amp: 0.08, Speed: 0.5}   // slow, quiet snow sea
+	seaMoodSets  = map[string][]seaMood{
+		"clear": {moodFamiliar, moodCalm, moodRollers},
+		"rain":  {moodFine, moodChop},
+		"storm": {moodStorm, moodSurge},
+		"fog":   {moodStill, moodCalm},
+		"snow":  {moodHush, moodCalm},
+	}
+	// How often a broad swell crosses the surface, in seconds (0 = never).
+	seaSwellEvery = map[string]float64{"clear": 240, "rain": 150, "storm": 70}
+)
 
 const (
-	seaMoodHold   = 90.0  // seconds per mood (roughly half held, half gliding to the next)
-	seaSwellEvery = 240.0 // a broad swell crosses the surface about this often
-	seaSwellPass  = 26.0  // and takes this long to cross
+	seaMoodHold  = 90.0 // seconds per mood (roughly half held, half gliding to the next)
+	seaSwellPass = 26.0 // a swell takes this long to cross
+	seaMoodEase  = 7.0  // seconds for the water to settle into a new mood, e.g. when the weather turns
 )
 
 func smoothstep01(x float64) float64 {
@@ -106,24 +124,83 @@ func smoothstep01(x float64) float64 {
 	return x * x * (3 - 2*x)
 }
 
-// seaMoodAt blends the two moods around clock (seconds of animated time).
-func seaMoodAt(clock float64) seaMood {
+func seaWeatherKey(weather string) string {
+	if _, ok := seaMoodSets[weather]; ok {
+		return weather
+	}
+	return "clear"
+}
+
+// seaMoodFor blends the two moods the given weather is between at clock (seconds of animated time).
+func seaMoodFor(weather string, clock float64) seaMood {
+	set := seaMoodSets[seaWeatherKey(weather)]
 	ph := clock / seaMoodHold
 	i := int(math.Floor(ph))
-	a, b := seaMoods[i%len(seaMoods)], seaMoods[(i+1)%len(seaMoods)]
+	a, b := set[i%len(set)], set[(i+1)%len(set)]
 	f := smoothstep01((ph - math.Floor(ph) - 0.45) / 0.55)
 	return seaMood{a.K + (b.K-a.K)*f, a.Amp + (b.Amp-a.Amp)*f, a.Speed + (b.Speed-a.Speed)*f}
 }
 
 // seaSwellAt returns the centre (0..1 across the width, may be off-screen) and strength (0..1)
 // of the occasional broad swell at clock.
-func seaSwellAt(clock float64) (centre, strength float64) {
-	tIn := math.Mod(clock, seaSwellEvery) - (seaSwellEvery - seaSwellPass - 10)
+func seaSwellAt(weather string, clock float64) (centre, strength float64) {
+	every := seaSwellEvery[seaWeatherKey(weather)]
+	if every <= 0 {
+		return 0, 0
+	}
+	tIn := math.Mod(clock, every) - (every - seaSwellPass - 10)
 	if tIn < 0 || tIn > seaSwellPass {
 		return 0, 0
 	}
 	f := tIn / seaSwellPass
 	return -0.3 + f*1.6, smoothstep01(f/0.25) * smoothstep01((1-f)/0.25)
+}
+
+// seaFrame is the water as drawn this frame. Weather, lighting and encounters read the waterline
+// from it, so everything floats on, falls onto or rises out of the very same surface.
+type seaFrame struct {
+	wl       float64 // waterline as a fraction of the height (0 top .. 1 bottom), before waves
+	tt       float64 // wave phase
+	mood     seaMood
+	swellU   float64
+	swellAmt float64
+}
+
+// lift is how much the passing swell raises the wave height at xNorm.
+func (f seaFrame) lift(xNorm float64) float64 {
+	if f.swellAmt <= 0 {
+		return 0
+	}
+	du := (xNorm - f.swellU) / 0.24
+	return 0.086 * f.swellAmt * math.Exp(-du*du)
+}
+
+// height is the sea's wave-height field: glyphs are drawn wherever it reaches seaSurfaceH.
+func (f seaFrame) height(xNorm, vv float64) float64 {
+	return (vv-f.wl)*1.15 + 0.42 + 0.10*math.Sin(vv*3.4+f.tt*0.9) +
+		f.mood.Amp*math.Sin(xNorm*f.mood.K+vv*1.5-f.tt*1.3) + f.lift(xNorm)
+}
+
+// surfaceVV solves height(xNorm, vv) == seaSurfaceH for vv: where the waterline is at xNorm.
+func (f seaFrame) surfaceVV(xNorm float64) float64 {
+	vv := f.wl
+	for i := 0; i < 3; i++ {
+		rest := 0.10*math.Sin(vv*3.4+f.tt*0.9) + f.mood.Amp*math.Sin(xNorm*f.mood.K+vv*1.5-f.tt*1.3) + f.lift(xNorm)
+		vv = f.wl + (seaSurfaceH-0.42-rest)/1.15
+	}
+	return vv
+}
+
+// surfaceY is the waterline in pixels at xNorm inside r.
+func (f seaFrame) surfaceY(r ui.Rect, xNorm float64) float32 {
+	return r.Y + float32(f.surfaceVV(xNorm))*r.H
+}
+
+// surfaceSlope is the waterline's slope (dy/dx in pixels) at xNorm, for tilting things that float.
+func (f seaFrame) surfaceSlope(r ui.Rect, xNorm float64) float64 {
+	const d = 0.01
+	dy := float64(f.surfaceVV(xNorm+d)-f.surfaceVV(xNorm-d)) * float64(r.H)
+	return dy / (2 * d * math.Max(1, float64(r.W)))
 }
 
 type SeaView struct {
@@ -200,9 +277,6 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 					speed = 1.0
 				}
 			}
-			if v.Weather == "storm" {
-				speed *= 1.25
-			}
 			if v.Motion == "calm" {
 				speed *= 0.52
 			}
@@ -213,18 +287,30 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 						dt = 0.08
 					}
 					// The phase is integrated, so a mood's change of speed never makes the water jump.
-					s.wavePhase += dt * speed * seaMoodAt(s.moodClock).Speed
+					s.wavePhase += dt * speed * s.moodCur.Speed
 					s.moodClock += dt
+					// Ease into whatever the weather now asks of the sea.
+					want := seaMoodFor(v.Weather, s.moodClock)
+					k := 1 - math.Exp(-dt/seaMoodEase)
+					s.moodCur.K += (want.K - s.moodCur.K) * k
+					s.moodCur.Amp += (want.Amp - s.moodCur.Amp) * k
+					s.moodCur.Speed += (want.Speed - s.moodCur.Speed) * k
 				}
 			}
 			s.lastPaintAt = paintNow
 		} else {
 			s.lastPaintAt = time.Time{}
 		}
+		if !s.moodInit {
+			s.moodCur = seaMoodFor(v.Weather, s.moodClock)
+			s.moodInit = true
+		}
 		tt := s.wavePhase
-		mood := seaMoodAt(s.moodClock)
-		swellU, swellAmt := seaSwellAt(s.moodClock)
+		mood := s.moodCur
+		swellU, swellAmt := seaSwellAt(v.Weather, s.moodClock)
 		levelShown := s.levelShown
+		s.frame = seaFrame{wl: 1.0 - levelShown, tt: tt, mood: mood, swellU: swellU, swellAmt: swellAmt}
+		frame := s.frame
 
 		compact := w < 460 || h < 480
 		maxCells := 2300.0
@@ -266,6 +352,12 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 		}
 		pxLocal := float64(v.PointerX - r.X)
 		pyLocal := float64(v.PointerY - r.Y)
+		fog := v.Weather == "fog"
+		flash := stormFlash(v, tt)
+		flashStep := -2 // on paper, light is less ink
+		if v.Dark {
+			flashStep = 2
+		}
 
 		for row := 0; row < rows; row++ {
 			y := float64(row)*cellF + half
@@ -288,11 +380,7 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 				}
 				uu := x / w
 				waveSin := math.Sin(uu*mood.K + rowPhase)
-				H := rowBase + mood.Amp*waveSin
-				if swellAmt > 0 {
-					du := (uu - swellU) / 0.24
-					H += 0.086 * swellAmt * math.Exp(-du*du) // the passing swell lifts the surface locally
-				}
+				H := rowBase + mood.Amp*waveSin + frame.lift(uu) // the passing swell lifts the surface locally
 				if v.PointerIn {
 					dx := x - pxLocal
 					distSq := dx*dx + dy*dy
@@ -314,6 +402,15 @@ func (s *SeaState) Draw(c *ui.Context, box ui.Element, v SeaView) {
 				idx := seaBodyGlyphs[min(2, int(depth*3))]
 				ci := min(len(colors)-1, 2+int(math.Round(depth*float64(len(colors)-3))))
 				alpha := 0.50 + 0.48*depth + hurryBoost
+				if fog {
+					// Fog is told by the water itself: the surface thins out into the mist.
+					alpha *= 0.30 + 0.70*smoothstep01(depth/0.45)
+				}
+				if flash > 0 {
+					// Lightning lights the water for an instant: the glyphs flare towards the light end of the ramp.
+					ci = max(0, min(len(colors)-1, ci+flashStep))
+					alpha = math.Min(1, alpha+0.22*flash)
+				}
 				if v.HighContrast {
 					alpha = math.Min(1, alpha+0.22)
 				}
@@ -415,10 +512,10 @@ func (s *SeaState) DrawTideRibbon(c *ui.Context, box ui.Element, v SeaView) {
 		staticMode := v.ReduceMotion || v.Motion == "off"
 		animate := !staticMode && (v.Running || pulseActive || v.PointerIn || !v.Paused)
 		tt := 1.4
-		mood := seaMoods[0]
+		mood := moodFamiliar
 		if animate {
 			tSec := float64(p.Now().UnixNano()) / 1e9
-			mood = seaMoodAt(tSec)
+			mood = seaMoodFor("clear", tSec)
 			speed := 0.24
 			if v.Running {
 				speed = 0.85

@@ -315,24 +315,25 @@ func (s *SeaState) drawTaskPulse(p *ui.Painter, r ui.Rect, v SeaView, now time.T
 
 // seaWaveSurfaceY returns the live wave-surface Y coordinate at horizontal fraction xNorm,
 // locked to flow.go's exact wave phase so raindrops, fog banks, moonlight reflections & encounters match the waves.
-func seaWaveSurfaceY(r ui.Rect, wl, tt, xNorm float64, weather string) float32 {
-	compact := r.H < 210 || r.W < 420
-	surfFrac := math.Max(0.26, math.Min(0.76, wl+0.08))
-	if compact {
-		surfFrac = math.Max(0.46, math.Min(0.78, wl+0.28))
+// stormFlash is the brightness (0..1) of the lightning flash at wave phase tt, or 0 between strikes.
+// The sea and the bolt both read it, so the water flares exactly when the bolt shows.
+func stormFlash(v SeaView, tt float64) float64 {
+	if v.Weather != "storm" || v.Motion == "off" || v.ReduceMotion || v.HighContrast {
+		return 0
 	}
-	phase := xNorm*4.2 + surfFrac*1.5 - tt*1.3
-	swell2 := surfFrac*3.4 + tt*0.9
-	ampY := math.Min(30.0, math.Max(9.0, float64(r.H)*0.068))
-	if compact {
-		ampY = math.Min(16.0, math.Max(6.0, float64(r.H)*0.055))
+	cycle := math.Mod(tt, stormStrikeEvery)
+	if cycle >= stormStrikeLen {
+		return 0
 	}
-	if weather == "storm" {
-		ampY *= 1.38
-	}
-	dy := -ampY*math.Sin(phase) - ampY*0.30*math.Sin(swell2)
-	return r.Y + float32(surfFrac)*r.H + float32(dy)
+	t := cycle / stormStrikeLen
+	// Double flicker, like a real strike
+	return math.Sin(t*math.Pi) * (0.65 + 0.35*math.Abs(math.Sin(t*math.Pi*3.0)))
 }
+
+const (
+	stormStrikeEvery = 8.8  // wave-phase units between strikes
+	stormStrikeLen   = 0.34 // how long one strike lasts
+)
 
 // drawSceneBackdrop paints time-of-day sky lighting + volumetric clouds, glowing moon/sun,
 // water reflections, twinkling stars, and smooth vector flapping seabirds behind the ocean waves.
@@ -501,7 +502,7 @@ func (s *SeaState) drawSceneBackdrop(p *ui.Painter, r ui.Rect, v SeaView, wl flo
 		p.FillPath(&moon, moonCol.Alpha(0.86))
 
 		// Shimmering vertical moonlight reflection ripples along the rolling water column below the moon
-		waveY := seaWaveSurfaceY(r, wl, tt, moonXNorm, v.Weather)
+		waveY := s.frame.surfaceY(r, moonXNorm)
 		for ri := 0; ri < 5; ri++ {
 			rf := float32(ri)
 			ry := waveY + 10 + rf*16
@@ -524,7 +525,7 @@ func (s *SeaState) drawSceneBackdrop(p *ui.Painter, r ui.Rect, v SeaView, wl flo
 		sun.Circle(sx, sy, 11)
 		p.FillPath(&sun, warmCol.Alpha(0.82))
 		// Gentle horizon sun shimmer on the live waves
-		waveY := seaWaveSurfaceY(r, wl, tt, sunXNorm, v.Weather)
+		waveY := s.frame.surfaceY(r, sunXNorm)
 		for ri := 0; ri < 4; ri++ {
 			ry := waveY + 10 + float32(ri)*15
 			wobble := float32(math.Sin(tt*1.8+float64(ri)*1.4) * 6.0)
@@ -651,11 +652,8 @@ func (s *SeaState) drawSceneEncounters(p *ui.Painter, r ui.Rect, v SeaView, wl f
 	reacting := reactAge >= 0 && reactAge < 2.2
 
 	compact := r.H < 210 || r.W < 420
-	// Sit cleanly on the visible shimmering wave crest band (matches flow.go's H≈0.34 surface)
-	surfFrac := math.Max(0.26, math.Min(0.76, wl+0.08))
-	if compact {
-		surfFrac = math.Max(0.46, math.Min(0.78, wl+0.28))
-	}
+	// The resting waterline, for the few effects that want the sea's level rather than a wave on it.
+	surfFrac := math.Max(0.05, math.Min(0.92, s.frame.surfaceVV(0.5)))
 
 	px := 12
 	if compact {
@@ -698,29 +696,19 @@ func (s *SeaState) drawSceneEncounters(p *ui.Painter, r ui.Rect, v SeaView, wl f
 	asc := s.scene.glyphAscent
 	lineH := float32(px) * 1.05
 
-	// Exact wave-surface coupling locked to flow.go's ocean wave equation:
-	// H = (vv-wl)*1.15 + 0.42 + 0.10*sin(vv*3.4 + tt*0.9) + 0.14*sin(uu*4.2 + vv*1.5 - tt*1.3)
-	// Negative sign ensures objects RISE with crests and DIP into troughs, plus Gerstner horizontal surge & slope!
+	// Everything that floats reads the waterline the sea actually drew this frame, so it rises on
+	// crests, dips into troughs and tilts with the slope under it — whatever the mood or swell.
+	frame := s.frame
 	waveSample := func(xNorm float64) (surfY float32, surgeX float32, slope float64) {
-		phase := xNorm*4.2 + surfFrac*1.5 - tt*1.3
-		swell2 := surfFrac*3.4 + tt*0.9
-		ampY := math.Min(30.0, math.Max(9.0, float64(r.H)*0.068))
-		if compact {
-			ampY = math.Min(16.0, math.Max(6.0, float64(r.H)*0.055))
-		}
-		if v.Weather == "storm" {
-			ampY *= 1.38
-		}
-		dy := -ampY*math.Sin(phase) - ampY*0.30*math.Sin(swell2)
-		surgeX = float32(ampY * 0.24 * math.Cos(phase))
-		slope = -(ampY * 4.2 / math.Max(220.0, float64(r.W))) * math.Cos(phase)
-		// Clamp tilt slope so boats/creatures rock gracefully without distortion
+		surfY = frame.surfaceY(r, xNorm)
+		slope = frame.surfaceSlope(r, xNorm)
+		// Clamp tilt so boats and creatures rock gracefully without distortion
 		if slope > 0.26 {
 			slope = 0.26
 		} else if slope < -0.26 {
 			slope = -0.26
 		}
-		surfY = r.Y + float32(surfFrac)*r.H + float32(dy)
+		surgeX = float32(-slope * 22) // a little horizontal surge down the face of the wave
 		return surfY, surgeX, slope
 	}
 
@@ -1466,116 +1454,99 @@ func (s *SeaState) drawSceneWeather(p *ui.Painter, r ui.Rect, v SeaView, wl floa
 		boltCore = ui.Hex("#FFFFFF")
 	}
 
+	adv := s.scene.glyphAdvance
+	lineH := float32(px) * 1.05
+	glyph := func(ch rune, x, y float32, col ui.Color) {
+		p.Glyphs(s.scene.shapeRune(ch), x-adv/2, y+asc*0.5, col)
+	}
+
 	switch v.Weather {
 	case "rain", "storm":
-		count := 32
+		// Rain is falling characters: a short tick in rain, a driven slash in a storm. Where a drop
+		// meets the water it leaves a small ring that opens and fades on the surface.
+		count := 30
 		if r.W >= 540 {
-			count = 52
+			count = 48
 		}
+		drop, speed, drift := '\'', 1.40, 0.05
 		if v.Weather == "storm" {
-			count = int(float64(count) * 1.45)
-		}
-		speed := 1.40
-		slant := float32(5.5)
-		streakLen := float32(13.0)
-		if v.Weather == "storm" {
-			speed = 2.05
-			slant = 9.0
-			streakLen = 18.0
+			count = int(float64(count) * 1.4)
+			drop, speed, drift = '/', 2.05, 0.14
 		}
 		for i := 0; i < count; i++ {
 			seedX := cellHash(i*17+3, 19)
 			seedT := cellHash(i*29+7, 5)
 			depth := 0.72 + 0.52*cellHash(i, 31)
 			phase := math.Mod(seedT+tt*speed*depth, 1.0)
-			xNorm := math.Mod(seedX-phase*0.14+1.0, 1.0)
+			xNorm := math.Mod(seedX-phase*drift+1.0, 1.0)
 			x := r.X + float32(xNorm)*r.W
-			// Hit the EXACT live moving ocean wave height at this raindrop's horizontal position!
-			localSurfY := seaWaveSurfaceY(r, wl, tt, xNorm, v.Weather)
-			dropSpan := float64(localSurfY - r.Y + 24)
-			y := r.Y + float32(phase*dropSpan)
-			alpha := float32((0.20 + 0.30*cellHash(i, 11)) * depth)
+			surfY := s.frame.surfaceY(r, xNorm)
+			span := float64(surfY - r.Y + 24)
+			y := r.Y + float32(phase*span)
+			alpha := float32((0.48 + 0.34*cellHash(i, 11)) * depth)
 			if v.Weather == "storm" {
 				alpha += 0.10
 			}
-			if y < localSurfY {
-				var drop ui.Path
-				dLen := streakLen * float32(depth)
-				dSlant := slant * float32(depth)
-				drop.MoveTo(x+dSlant*0.4, y-dLen).LineTo(x, y)
-				p.StrokePath(&drop, 1.05, rainCol.Alpha(alpha))
-			} else if y < localSurfY+22 {
-				spFrac := float32((y - localSurfY) / 22.0)
-				ringR := 3.0 + spFrac*11.0
-				ringA := alpha * (1.0 - spFrac) * 0.95
-				if ringA > 0.02 {
-					p.Stroke(ui.Rect{X: x - ringR, Y: localSurfY - 2.5, W: ringR * 2, H: 5}, splashCol.Alpha(ringA), 2.5, 1.05)
+			if alpha > 1 {
+				alpha = 1
+			}
+			if y < surfY-4 {
+				ch := drop
+				if v.Weather == "rain" && depth > 1.02 {
+					ch = '|' // the nearest drops fall as longer strokes
 				}
+				glyph(ch, x, y, rainCol.Alpha(alpha))
+			} else if y < surfY+22 {
+				f := (y - (surfY - 4)) / 26.0
+				ring := '∘'
+				if f > 0.45 {
+					ring = 'o'
+				}
+				glyph(ring, x, surfY-2, splashCol.Alpha(alpha*(1.0-f)))
 			}
 		}
 
-		// Real branching GPU vector storm lightning with glowing sky flash!
-		if v.Weather == "storm" && animate {
-			cycle := math.Mod(tt, 8.8)
-			if cycle < 0.30 {
-				tBolt := cycle / 0.30
-				// Double-flicker realistic lightning envelope
-				flash := math.Sin(tBolt*math.Pi) * (0.65 + 0.35*math.Abs(math.Sin(tBolt*math.Pi*3.0)))
-				skyFlash := float32(flash * 0.14)
-				p.FillGradient(ui.Rect{X: r.X, Y: r.Y, W: r.W, H: r.H * 0.55}, ui.LinearGradient{
-					From: ui.Hex("#D9EEFF").Alpha(skyFlash), To: ui.Transparent, Angle: 180,
-				}, 0)
-
-				seed := int(tt / 8.8)
-				bxNorm := 0.20 + 0.60*cellHash(seed, 71)
-				bx := r.X + float32(bxNorm)*r.W
-				endY := seaWaveSurfaceY(r, wl, tt, bxNorm, v.Weather) - 8
-				if endY < r.Y+90 {
-					endY = r.Y + 90
+		// Lightning is a bolt written in / | \ from the sky to the sea. The flash itself is the
+		// water flaring (see stormFlash in the sea), not a wash of light over the picture.
+		if flash := stormFlash(v, tt); flash > 0 {
+			seed := int(tt / stormStrikeEvery)
+			bxNorm := 0.20 + 0.60*cellHash(seed, 71)
+			endY := s.frame.surfaceY(r, bxNorm) - lineH
+			x := r.X + float32(bxNorm)*r.W
+			step := 0
+			forkAt := 2 + int(cellHash(seed, 83)*3)
+			for y := r.Y + lineH*0.5; y < endY; y += lineH {
+				dir := int(cellHash(seed*13+step, 97)*3) - 1 // -1, 0, +1
+				ch := '|'
+				if dir < 0 {
+					ch = '/'
+				} else if dir > 0 {
+					ch = '\\'
 				}
-				// Soft glowing cloud origin halo
-				p.FillRadialGradient(ui.Rect{X: bx - 64, Y: r.Y - 12, W: 128, H: 72}, ui.RadialGradient{
-					Stops: []ui.GradientStop{
-						{Color: boltGlow.Alpha(float32(flash * 0.36)), At: 0.0},
-						{Color: ui.Transparent, At: 1.0},
-					},
-				}, 0)
-
-				// Jagged main trunk + 2 secondary forks
-				var mainBolt, fork1, fork2 ui.Path
-				segs := 6
-				curX, curY := bx, r.Y+4
-				mainBolt.MoveTo(curX, curY)
-				for si := 1; si <= segs; si++ {
-					sf := float32(si) / float32(segs)
-					jitter := float32((cellHash(seed*13+si, 97) - 0.5) * 34.0)
-					nx := bx + jitter*(1.0-sf*0.25)
-					ny := r.Y + 4 + sf*(endY-(r.Y+4))
-					mainBolt.LineTo(nx, ny)
-					if si == 2 {
-						fork1.MoveTo(nx, ny).LineTo(nx-18, ny+24).LineTo(nx-28, ny+46)
-					} else if si == 3 {
-						fork2.MoveTo(nx, ny).LineTo(nx+22, ny+22).LineTo(nx+32, ny+42)
+				glyph(ch, x, y, boltCore.Alpha(float32(0.35+0.65*flash)))
+				if step == forkAt || step == forkAt+3 {
+					// a short side branch
+					fdir := float32(1)
+					fch := '\\'
+					if step == forkAt {
+						fdir, fch = -1, '/'
 					}
-					curX, curY = nx, ny
+					for k := 1; k <= 3; k++ {
+						glyph(fch, x+fdir*adv*float32(k), y+lineH*float32(k), boltGlow.Alpha(float32(flash)*0.8))
+					}
 				}
-				_ = curX
-				_ = curY
-				p.StrokePath(&mainBolt, 5.2, boltGlow.Alpha(float32(flash*0.42)))
-				p.StrokePath(&mainBolt, 1.7, boltCore.Alpha(float32(flash*0.92)))
-				p.StrokePath(&fork1, 2.8, boltGlow.Alpha(float32(flash*0.30)))
-				p.StrokePath(&fork1, 1.0, boltCore.Alpha(float32(flash*0.72)))
-				p.StrokePath(&fork2, 2.8, boltGlow.Alpha(float32(flash*0.30)))
-				p.StrokePath(&fork2, 1.0, boltCore.Alpha(float32(flash*0.72)))
+				x += float32(dir) * adv
+				step++
 			}
 		}
 
 	case "snow":
-		count := 28
+		// Snow is slow asterisks, larger and smaller, swaying down and melting at the waterline.
+		count := 26
 		if r.W >= 540 {
-			count = 46
+			count = 42
 		}
-		flakes := []rune{'·', '°', '*'}
+		flakes := []rune{'*', '∗', '*', '°'}
 		for i := 0; i < count; i++ {
 			seedX := cellHash(i*13+7, 23)
 			seedT := cellHash(i*31+5, 17)
@@ -1584,59 +1555,42 @@ func (s *SeaState) drawSceneWeather(p *ui.Painter, r ui.Rect, v SeaView, wl floa
 			sway := 0.028 * math.Sin(tt*1.2+float64(i)*1.9)
 			xNorm := math.Mod(seedX+sway+1.0, 1.0)
 			x := r.X + float32(xNorm)*r.W
-			localSurfY := seaWaveSurfaceY(r, wl, tt, xNorm, v.Weather)
-			y := r.Y + float32(phase)*(localSurfY-r.Y+30)
+			surfY := s.frame.surfaceY(r, xNorm)
+			y := r.Y + float32(phase)*(surfY-r.Y+18)
 			fade := 1.0
-			if y > localSurfY {
-				fade = math.Max(0, 1.0-float64(y-localSurfY)/30.0)
+			if y > surfY-6 {
+				fade = math.Max(0, 1.0-float64(y-(surfY-6))/24.0)
 			}
-			alpha := float32((0.32 + 0.44*cellHash(i, 53)) * fade)
-			if alpha > 0.04 {
-				if i%3 == 0 {
-					// Soft glowing snow orb
-					rad := float32(2.2 + cellHash(i, 61)*2.4)
-					p.FillRadialGradient(ui.Rect{X: x - rad, Y: y - rad, W: rad * 2, H: rad * 2}, ui.RadialGradient{
-						Stops: []ui.GradientStop{
-							{Color: snowCol.Alpha(alpha), At: 0.0},
-							{Color: ui.Transparent, At: 1.0},
-						},
-					}, 0)
-				} else {
-					gs := s.scene.shapeRune(flakes[i%len(flakes)])
-					p.Glyphs(gs, x, y+asc, snowCol.Alpha(alpha))
-				}
+			if alpha := float32((0.36 + 0.44*cellHash(i, 53)) * fade); alpha > 0.04 {
+				glyph(flakes[i%len(flakes)], x, y, snowCol.Alpha(alpha))
 			}
 		}
 
 	case "fog":
-		// Layered translucent volumetric coastal mist banks drifting smoothly across the live wave horizon
-		baseSurf := seaWaveSurfaceY(r, wl, tt, 0.5, v.Weather)
-		mistRect := ui.Rect{X: r.X, Y: baseSurf - r.H*0.20, W: r.W, H: r.H * 0.44}
-		p.FillGradient(mistRect, ui.LinearGradient{
-			Angle: 180,
-			Stops: []ui.GradientStop{
-				{Color: ui.Transparent, At: 0.0},
-				{Color: fogCol.Alpha(0.15), At: 0.48},
-				{Color: ui.Transparent, At: 1.0},
-			},
-		}, 0)
-		for bi := 0; bi < 5; bi++ {
-			spd := 0.018 + float64(bi%3)*0.010
-			drift := math.Mod(tt*spd+float64(bi)*0.23, 1.40) - 0.20
-			bx := r.X + float32(drift)*r.W
-			localY := seaWaveSurfaceY(r, wl, tt, math.Max(0.05, math.Min(0.95, drift)), v.Weather)
-			by := localY - float32(18-(bi%3)*16)
-			bw := float32(math.Max(140, float64(r.W)*0.34))
-			bh := float32(34 + (bi%2)*16)
-			al := float32(0.16 + float64(bi%2)*0.06)
-			p.FillRadialGradient(ui.Rect{X: bx - bw/2, Y: by - bh/2, W: bw, H: bh}, ui.RadialGradient{
-				Stops: []ui.GradientStop{
-					{Color: fogCol.Alpha(al), At: 0.0},
-					{Color: fogCol.Alpha(al * 0.38), At: 0.42},
-					{Color: ui.Transparent, At: 0.76},
-					{Color: ui.Transparent, At: 1.0},
-				},
-			}, bh*0.5)
+		// Fog is mostly told by the sea thinning out at the surface. Above it, a few long, faint
+		// runs of dashes drift by: banks of mist, written rather than painted.
+		for bi := 0; bi < 6; bi++ {
+			spd := 0.012 + float64(bi%3)*0.007
+			drift := math.Mod(tt*spd+float64(bi)*0.29, 1.5) - 0.25
+			runLen := 14 + (bi%3)*7
+			surfY := s.frame.surfaceY(r, math.Max(0.02, math.Min(0.98, drift)))
+			y := surfY - lineH*(1.2+float32(bi%4)*1.5)
+			if y < r.Y+lineH {
+				continue
+			}
+			for k := 0; k < runLen; k++ {
+				e := float64(k) / float64(runLen-1)
+				env := math.Sin(e * math.Pi) // soft at both ends of the bank
+				ch := '–'
+				if (k+bi)%4 == 0 {
+					ch = '~'
+				}
+				x := r.X + float32(drift)*r.W + (float32(k)-float32(runLen)/2)*adv*1.5
+				if x < r.X-adv || x > r.X+r.W+adv {
+					continue
+				}
+				glyph(ch, x, y, fogCol.Alpha(float32(0.50*env)))
+			}
 		}
 	}
 	s.mu.Unlock()
